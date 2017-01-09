@@ -39,7 +39,7 @@ void h2x_set_integer_as_big_endian(uint8_t* to_set, uint32_t int_value)
         int_index = sizeof(uint32_t) - 1;
     }
 
-    uint8_t* int_as_buffer = (uint8_t*)int_value;
+    uint8_t* int_as_buffer = (uint8_t*)&int_value;
 
     for(;data_index < sizeof(uint32_t); ++data_index, --int_index)
     {
