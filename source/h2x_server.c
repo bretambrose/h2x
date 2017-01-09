@@ -9,14 +9,13 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
-#include <netdb.h>
+
 
 bool g_quit;
 
@@ -34,27 +33,13 @@ struct command_def server_commands[] = {
 
 #define SERVER_COMMAND_COUNT (sizeof(server_commands) / sizeof(struct command_def))
 
-static void* processing_thread(void* arg)
-{
-    struct h2x_thread* self = arg;
-    bool done = false;
-    while(!done)
-    {
-        sleep(1);
-
-        pthread_mutex_lock(&self->state_lock);
-        done = self->should_quit;
-        pthread_mutex_unlock(&self->state_lock);
-    }
-}
-
-static struct h2x_thread* create_processing_threads(int thread_count)
+static struct h2x_thread* create_processing_threads(struct h2x_options* options)
 {
     int i;
     struct h2x_thread* thread_chain = NULL;
-    for(i = 0; i < thread_count; ++i)
+    for(i = 0; i < options->threads; ++i)
     {
-        struct h2x_thread* thread = h2x_thread_new(processing_thread);
+        struct h2x_thread* thread = h2x_thread_new(options, h2x_processing_thread_function);
         thread->next = thread_chain;
         thread_chain = thread;
     }
@@ -181,7 +166,7 @@ void h2x_do_server(struct h2x_options* options)
 
     events = calloc(LISTENER_EVENT_COUNT, sizeof(struct epoll_event));
 
-    struct h2x_thread* threads = create_processing_threads(options->threads);
+    struct h2x_thread* threads = create_processing_threads(options);
 
     g_quit = false;
     while(!g_quit)
