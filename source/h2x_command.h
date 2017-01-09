@@ -9,8 +9,7 @@ struct h2x_buffer;
 struct command_def {
     char* command;
     int required_arguments;
-    int optional_arguments;
-    bool capture_all;
+    bool capture_all_last_required;
     int (*handler)(int, char**);
     char* help;
 };

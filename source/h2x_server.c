@@ -22,12 +22,14 @@ bool g_quit;
 
 static int handle_quit_command(int argc, char** argv)
 {
+    fprintf(stderr, "Shutting down server...\n");
     g_quit = true;
     return 0;
 }
 
+
 struct command_def server_commands[] = {
-    { "quit", 0, 0, false, handle_quit_command, "shuts down the server" }
+    { "quit", 0, false, handle_quit_command, "shuts down the server" }
 };
 
 #define SERVER_COMMAND_COUNT (sizeof(server_commands) / sizeof(struct command_def))
@@ -35,9 +37,14 @@ struct command_def server_commands[] = {
 static void* processing_thread(void* arg)
 {
     struct h2x_thread* self = arg;
-    while(1)
+    bool done = false;
+    while(!done)
     {
-        ;
+        sleep(1);
+
+        pthread_mutex_lock(&self->state_lock);
+        done = self->should_quit;
+        pthread_mutex_unlock(&self->state_lock);
     }
 }
 
@@ -139,6 +146,12 @@ void h2x_do_server(struct h2x_options* options)
         return;
     }
 
+    if(h2x_make_socket_nonblocking(STDIN_FILENO))
+    {
+        fprintf(stderr, "Unable to make stdin nonblocking\n");
+        goto CLEANUP;
+    }
+
     epoll_fd = epoll_create1(0);
     if(epoll_fd == -1)
     {
@@ -219,7 +232,7 @@ void h2x_do_server(struct h2x_options* options)
             }
             else
             {
-                assert(event_fd = STDIN_FILENO);
+                assert(event_fd == STDIN_FILENO);
                 char input_buffer[READ_BUFFER_SIZE];
 
                 while(1)
