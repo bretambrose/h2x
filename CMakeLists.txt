@@ -25,4 +25,4 @@ add_executable(h2x ${H2X_SOURCE})
 
 target_compile_options(h2x PUBLIC -std=gnu99)
  
-target_link_libraries(h2x ${S2N_LIB_PATH} pthread)
+target_link_libraries(h2x ${S2N_LIB_PATH} pthread crypto rt)
