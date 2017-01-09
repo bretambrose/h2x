@@ -5,10 +5,10 @@
 #include <h2x_command.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
+#include <h2x_thread.h>
 
 #include <assert.h>
 #include <errno.h>
-#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +16,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <netdb.h>
 
 bool g_quit;
 
