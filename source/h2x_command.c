@@ -191,6 +191,16 @@ static void process_command_line(struct command_def* command_definitions, int co
         }
     }
 
+    if(strcmp(command, "help") == 0)
+    {
+        fprintf(stderr, "h2x commands:\n");
+        for(uint32_t i = 0; i < command_count; ++i)
+        {
+            fprintf(stderr, " %s - %s\n", command_definitions[i].command, command_definitions[i].help);
+        }
+        return;
+    }
+
     fprintf(stderr, "Unknown command: %s\n", command);
 }
 

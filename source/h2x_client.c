@@ -28,9 +28,16 @@ static int handle_quit_command(int argc, char** argv)
     return 0;
 }
 
+static int handle_connect_command(int argc, char** argv)
+{
+    fprintf(stderr, "Connect called but not doing anything atm\n");
+
+    return 0;
+}
 
 struct command_def client_commands[] = {
-        { "quit", 0, false, handle_quit_command, "shuts down the client" }
+    { "quit", 0, false, handle_quit_command, "shuts down the client" },
+    { "connect", 2, false, handle_connect_command, "[dest ip] [dest port] - attempts to connect to an h2x server process" }
 };
 
 #define CLIENT_COMMAND_COUNT (sizeof(client_commands) / sizeof(struct command_def))
