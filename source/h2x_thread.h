@@ -16,7 +16,6 @@ struct h2x_thread {
     pthread_mutex_t state_lock;
     struct h2x_socket* new_connections;
     bool should_quit;
-    bool exited;
 };
 
 struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *));

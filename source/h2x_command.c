@@ -87,7 +87,7 @@ static void split_args(struct command_def* command, char* command_args, int* arg
 
     while(arg_index < arg_end)
     {
-        if(arg_count >= command->required_arguments && command->capture_all)
+        if(arg_count + 1 >= command->required_arguments && command->capture_all_last_required)
         {
             ++arg_count;
             break;
@@ -108,7 +108,7 @@ static void split_args(struct command_def* command, char* command_args, int* arg
             continue;
         }
 
-        if(is_space || (in_quote && command_args[arg_index - 1] != '\\' && current_char == '"'))
+        if((is_space && !in_quote) || (in_quote && current_char == '"'))
         {
             in_arg = false;
             in_quote = false;
@@ -133,7 +133,7 @@ static void split_args(struct command_def* command, char* command_args, int* arg
 
     while(arg_index < arg_end && current_arg < arg_count)
     {
-        if(arg_count >= command->required_arguments && command->capture_all)
+        if(arg_count + 1 >= command->required_arguments && command->capture_all_last_required)
         {
             (*argv)[current_arg] = command_args + arg_index;
             break;
@@ -187,10 +187,11 @@ static void process_command_line(struct command_def* command_definitions, int co
             }
 
             free(argv);
+            return;
         }
     }
 
-    fprintf(stderr, "Unknown command: %s", command);
+    fprintf(stderr, "Unknown command: %s\n", command);
 }
 
 void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count)

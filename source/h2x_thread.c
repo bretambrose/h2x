@@ -10,7 +10,6 @@ struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *))
     thread->next = NULL;
     thread->new_connections = NULL;
     thread->should_quit = false;
-    thread->exited = false;
 
     if(pthread_mutex_init(&thread->state_lock, NULL))
     {
