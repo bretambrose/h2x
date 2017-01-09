@@ -35,72 +35,86 @@ struct command_def server_commands[] = {
 static void* processing_thread(void* arg)
 {
     struct h2x_thread* self = arg;
+    while(1)
+    {
+        ;
+    }
 }
 
-static struct h2x_thread* create_processing_threads()
+static struct h2x_thread* create_processing_threads(int thread_count)
 {
+    int i;
+    struct h2x_thread* thread_chain = NULL;
+    for(i = 0; i < thread_count; ++i)
+    {
+        struct h2x_thread* thread = h2x_thread_new(processing_thread);
+        thread->next = thread_chain;
+        thread_chain = thread;
+    }
+
+    return thread_chain;
 }
 
 static int create_listener_socket(struct h2x_options* options)
 {
-  struct addrinfo hints;
-  struct addrinfo *result, *rp;
-  int ret_val, socket_fd;
+    struct addrinfo hints;
+    struct addrinfo *result, *rp;
+    int ret_val, socket_fd;
 
-  memset(&hints, 0, sizeof(struct addrinfo));
-  hints.ai_family = AF_UNSPEC;
-  hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
 
-  char port[20];
-  sprintf(port, "%d", options->port);
+    char port[20];
+    sprintf(port, "%d", options->port);
 
-  ret_val = getaddrinfo(NULL, port, &hints, &result);
-  if(ret_val != 0)
-  {
-    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret_val));
-    return -1;
-  }
-
-  for(rp = result; rp != NULL; rp = rp->ai_next)
-  {
-    socket_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-    if(socket_fd == -1)
+    ret_val = getaddrinfo(NULL, port, &hints, &result);
+    if(ret_val != 0)
     {
-      continue;
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret_val));
+        return -1;
     }
 
-    ret_val = bind(socket_fd, rp->ai_addr, rp->ai_addrlen);
-    if (ret_val == 0)
+    for(rp = result; rp != NULL; rp = rp->ai_next)
     {
-      break;
+        socket_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if(socket_fd == -1)
+        {
+            continue;
+        }
+
+        ret_val = bind(socket_fd, rp->ai_addr, rp->ai_addrlen);
+        if (ret_val == 0)
+        {
+            break;
+        }
+
+        close(socket_fd);
     }
 
-    close(socket_fd);
-  }
+    if(rp == NULL)
+    {
+        return -1;
+    }
 
-  if(rp == NULL)
-  {
-    return -1;
-  }
+    freeaddrinfo(result);
 
-  freeaddrinfo(result);
+    if(h2x_make_socket_nonblocking(socket_fd))
+    {
+        fprintf(stderr, "Failed to make listener socket non blocking\n");
+        close(socket_fd);
+        return -1;
+    }
 
-  if(h2x_make_socket_nonblocking(socket_fd))
-  {
-    fprintf(stderr, "Failed to make listener socket non blocking\n");
-    close(socket_fd);
-    return -1;
-  }
+    if(listen(socket_fd, SOMAXCONN))
+    {
+        fprintf(stderr, "Failed to set socket as passive listener\n");
+        close(socket_fd);
+        return -1;
+    }
 
-  if(listen(socket_fd, SOMAXCONN))
-  {
-    fprintf(stderr, "Failed to set socket as passive listener\n");
-    close(socket_fd);
-    return -1;
-  }
-
-  return socket_fd;
+    return socket_fd;
 }
 
 #define LISTENER_EVENT_COUNT 2
@@ -108,135 +122,135 @@ static int create_listener_socket(struct h2x_options* options)
 
 void h2x_do_server(struct h2x_options* options)
 {
-  int listener_fd = -1, epoll_fd = -1;
-  int ret_val;
-  struct epoll_event* events = NULL;
-  struct epoll_event event;
+    int listener_fd = -1, epoll_fd = -1;
+    int ret_val;
+    struct epoll_event* events = NULL;
+    struct epoll_event event;
 
-  memset(&event, 0, sizeof(struct epoll_event));
+    memset(&event, 0, sizeof(struct epoll_event));
 
-  struct h2x_buffer stdin_buffer;
-  h2x_buffer_init(200, &stdin_buffer);
+    struct h2x_buffer stdin_buffer;
+    h2x_buffer_init(200, &stdin_buffer);
 
-  listener_fd = create_listener_socket(options);
-  if(listener_fd < 0)
-  {
-    fprintf(stderr, "Unable to create and bind listener socket\n");
-    return;
-  }
+    listener_fd = create_listener_socket(options);
+    if(listener_fd < 0)
+    {
+        fprintf(stderr, "Unable to create and bind listener socket\n");
+        return;
+    }
 
-  epoll_fd = epoll_create1(0);
-  if(epoll_fd == -1)
-  {
-    fprintf(stderr, "Unable to create epoll instance\n");
-    goto CLEANUP;
-  }
-
-  /* Add the listener socket */
-  event.data.fd = listener_fd;
-  event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
-  ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &event);
-  if(ret_val == -1)
-  {
-    fprintf(stderr, "Unable to register listener socket with epoll instance\n");
-    goto CLEANUP;
-  }
-
-  /* Add stdin for server commands */
-  event.data.fd = STDIN_FILENO;
-  event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
-  ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &event);
-  if(ret_val == -1)
-  {
-    fprintf(stderr, "Unable to register stdin with epoll instance\n");
-    goto CLEANUP;
-  }
-
-  events = calloc(LISTENER_EVENT_COUNT, sizeof(struct epoll_event));
-
-  struct h2x_thread* threads = create_processing_threads(options->threads);
-
-  g_quit = false;
-  while(!g_quit)
-  {
-    int event_count, i;
-
-    event_count = epoll_wait(epoll_fd, events, LISTENER_EVENT_COUNT, -1);
-    for(i = 0; i < event_count; i++)
-	{
-      int event_fd = events[i].data.fd;
-      int event_mask = events[i].events;
-	  if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI))))
-      {
-        fprintf (stderr, "epoll error. events=%u\n", events[i].events);
+    epoll_fd = epoll_create1(0);
+    if(epoll_fd == -1)
+    {
+        fprintf(stderr, "Unable to create epoll instance\n");
         goto CLEANUP;
-      }
+    }
 
-      if(event_fd == listener_fd)
-      {
-        while(1)
+    /* Add the listener socket */
+    event.data.fd = listener_fd;
+    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
+    ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &event);
+    if(ret_val == -1)
+    {
+        fprintf(stderr, "Unable to register listener socket with epoll instance\n");
+        goto CLEANUP;
+    }
+
+    /* Add stdin for server commands */
+    event.data.fd = STDIN_FILENO;
+    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
+    ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &event);
+    if(ret_val == -1)
+    {
+        fprintf(stderr, "Unable to register stdin with epoll instance\n");
+        goto CLEANUP;
+    }
+
+    events = calloc(LISTENER_EVENT_COUNT, sizeof(struct epoll_event));
+
+    struct h2x_thread* threads = create_processing_threads(options->threads);
+
+    g_quit = false;
+    while(!g_quit)
+    {
+        int event_count, i;
+
+        event_count = epoll_wait(epoll_fd, events, LISTENER_EVENT_COUNT, -1);
+        for(i = 0; i < event_count; i++)
         {
-          struct sockaddr incoming_addr;
-          socklen_t incoming_len;
-          int incoming_fd;
-
-          incoming_len = sizeof(struct sockaddr);
-          incoming_fd = accept(event_fd, &incoming_addr, &incoming_len);
-          if(incoming_fd == -1)
-          {
-            if (errno != EAGAIN && errno != EWOULDBLOCK)
+            int event_fd = events[i].data.fd;
+            int event_mask = events[i].events;
+            if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI))))
             {
-              fprintf(stderr, "Error accepting connection: %u\n", errno);
-              goto CLEANUP;
+                fprintf (stderr, "epoll error. events=%u\n", events[i].events);
+                goto CLEANUP;
             }
 
-            break;
-          }
+            if(event_fd == listener_fd)
+            {
+                while(1)
+                {
+                    struct sockaddr incoming_addr;
+                    socklen_t incoming_len;
+                    int incoming_fd;
 
-          ret_val = h2x_make_socket_nonblocking(incoming_fd);
-          if(ret_val == -1)
-          {
-            fprintf(stderr, "Failed to make incoming connection non-blocking\n");
-            goto CLEANUP;
-          }
+                    incoming_len = sizeof(struct sockaddr);
+                    incoming_fd = accept(event_fd, &incoming_addr, &incoming_len);
+                    if(incoming_fd == -1)
+                    {
+                        if (errno != EAGAIN && errno != EWOULDBLOCK)
+                        {
+                            fprintf(stderr, "Error accepting connection: %u\n", errno);
+                            goto CLEANUP;
+                        }
 
-          close(incoming_fd);
+                        break;
+                    }
+
+                    ret_val = h2x_make_socket_nonblocking(incoming_fd);
+                    if(ret_val == -1)
+                    {
+                        fprintf(stderr, "Failed to make incoming connection non-blocking\n");
+                        goto CLEANUP;
+                    }
+
+                    close(incoming_fd);
+                }
+            }
+            else
+            {
+                assert(event_fd = STDIN_FILENO);
+                char input_buffer[READ_BUFFER_SIZE];
+
+                while(1)
+                {
+                    ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
+                    if(count <= -1)
+                    {
+                        break;
+                    }
+
+                    h2x_buffer_write(input_buffer, count, &stdin_buffer);
+                }
+
+                h2x_command_process(&stdin_buffer, server_commands, SERVER_COMMAND_COUNT);
+            }
         }
-      }
-      else
-      {
-        assert(event_fd = STDIN_FILENO);
-        char input_buffer[READ_BUFFER_SIZE];
-
-        while(1)
-        {
-          ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
-          if(count <= -1)
-          {
-            break;
-          }
-
-          h2x_buffer_write(input_buffer, count, &stdin_buffer);
-        }
-
-        h2x_command_process(&stdin_buffer, server_commands, SERVER_COMMAND_COUNT);
-      }
     }
-  }
 
 CLEANUP:
-  h2x_thread_shutdown(threads);
-  h2x_buffer_free(&stdin_buffer);
-  free(events);
+    h2x_thread_shutdown(threads);
+    h2x_buffer_free(&stdin_buffer);
+    free(events);
 
-  if(epoll_fd != -1)
-  {
-    close(epoll_fd);
-  }
+    if(epoll_fd != -1)
+    {
+        close(epoll_fd);
+    }
 
-  if(listener_fd != -1)
-  {
-    close(listener_fd);
-  }
+    if(listener_fd != -1)
+    {
+        close(listener_fd);
+    }
 }
 

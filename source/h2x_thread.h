@@ -19,7 +19,7 @@ struct h2x_thread {
     bool exited;
 };
 
-struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *), void *arg);
+struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *));
 int h2x_thread_shutdown(struct h2x_thread* thread_chain);
 
 int h2x_thread_add_connection(struct h2x_thread* thread, int fd);

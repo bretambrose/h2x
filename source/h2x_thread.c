@@ -3,7 +3,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *), void *arg)
+struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *))
 {
     struct h2x_thread* thread = malloc(sizeof(struct h2x_thread));
 
@@ -28,7 +28,7 @@ struct h2x_thread* h2x_thread_new(void *(*start_routine)(void *), void *arg)
         goto CLEANUP_THREAD_ATTR;
     }
 
-    if(!pthread_create(&thread->thread, NULL, start_routine, arg))
+    if(!pthread_create(&thread->thread, NULL, start_routine, thread))
     {
         return thread;
     }
