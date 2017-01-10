@@ -7,6 +7,8 @@
 #include <h2x_options.h>
 #include <h2x_thread.h>
 
+#include <arpa/inet.h>
+#include <errno.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,15 +33,37 @@ static int handle_quit_command(int argc, char** argv, void* context)
 
 static int handle_connect_command(int argc, char** argv, void* context)
 {
-    /*
-    //h2x_connection_manager* manager = context;
+    int socket_desc;
+    struct sockaddr_in dest_addr;
 
-    TODO
-    //??;
+    //Create socket
+    int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (socket_fd == -1)
+    {
+        return -1;
+    }
 
-    //h2x_connection_manager_add_connection(manager, fd);
-*/
-    
+    if(h2x_make_socket_nonblocking(socket_fd))
+    {
+        fprintf(stderr, "Failed to make client connection socket non blocking\n");
+        close(socket_fd);
+        return -1;
+    }
+
+    dest_addr.sin_addr.s_addr = inet_addr(argv[0]);
+    dest_addr.sin_family = AF_INET;
+    dest_addr.sin_port = htons(atoi(argv[1]));
+
+    //Connect to remote server
+    if(connect(socket_fd, (struct sockaddr *)&dest_addr , sizeof(dest_addr)) < 0)
+    {
+        fprintf(stderr, "Failed to connect to %s:%s  errno=%d\n", argv[0], argv[1], (int)errno);
+        return -1;
+    }
+
+    struct h2x_connection_manager* manager = context;
+    h2x_connection_manager_add_connection(manager, socket_fd);
+
     return 0;
 }
 
