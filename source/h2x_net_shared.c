@@ -195,7 +195,7 @@ void *h2x_processing_thread_function(void * arg)
     free(events);
     close(epoll_fd);
 
-    h2x_hash_table_cleaup(connection_table);
+    h2x_hash_table_cleanup(connection_table);
 
     return NULL;
 }

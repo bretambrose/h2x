@@ -6,8 +6,7 @@
 struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *))
 {
     struct h2x_thread* thread = malloc(sizeof(struct h2x_thread));
-
-    thread->next = NULL;
+    
     thread->options = options;
     thread->new_connections = NULL;
     thread->should_quit = false;
@@ -44,7 +43,7 @@ CLEANUP_THREAD:
     return NULL;
 }
 
-static void dispose_thread(struct h2x_thread* thread)
+void h2x_thread_cleanup(struct h2x_thread* thread)
 {
     /* the child thread should have destroyed this already and nothing
      * new can have been added during the shutdown process
@@ -54,50 +53,6 @@ static void dispose_thread(struct h2x_thread* thread)
     pthread_mutex_destroy(&thread->state_lock);
 
     free(thread);
-}
-
-int h2x_thread_shutdown(struct h2x_thread* thread_chain)
-{
-    /* tell everyone to quit */
-    struct h2x_thread* thread = thread_chain;
-    while(thread)
-    {
-        if(pthread_mutex_lock(&thread->state_lock))
-        {
-            // do something better here
-            return -1;
-        }
-
-        thread->should_quit = true;
-
-        pthread_mutex_unlock(&thread->state_lock);
-
-        thread = thread->next;
-    }
-
-    /* wait for everyone to quit */
-    thread = thread_chain;
-    while(thread)
-    {
-        if(pthread_join(thread->thread, NULL))
-        {
-            // do something better here
-            return -1;
-        }
-
-        thread = thread->next;
-    }
-
-    /* cleanup */
-    thread = thread_chain;
-    while(thread)
-    {
-        struct h2x_thread* next = thread->next;
-        dispose_thread(thread);
-        thread = next;
-    }
-
-    return 0;
 }
 
 int h2x_thread_add_connection(struct h2x_thread* thread, int fd)
@@ -113,6 +68,7 @@ int h2x_thread_add_connection(struct h2x_thread* thread, int fd)
 
     new_connection->next = thread->new_connections;
     thread->new_connections = new_connection;
+    ++thread->connection_count;
 
     pthread_mutex_unlock(&thread->state_lock);
     return 0;

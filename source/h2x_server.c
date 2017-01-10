@@ -3,6 +3,7 @@
 
 #include <h2x_buffer.h>
 #include <h2x_command.h>
+#include <h2x_connection_manager.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
 #include <h2x_thread.h>
@@ -33,18 +34,12 @@ struct command_def server_commands[] = {
 
 #define SERVER_COMMAND_COUNT (sizeof(server_commands) / sizeof(struct command_def))
 
-static struct h2x_thread* create_processing_threads(struct h2x_options* options)
+static struct h2x_connection_manager* create_connection_manager(struct h2x_options* options)
 {
-    int i;
-    struct h2x_thread* thread_chain = NULL;
-    for(i = 0; i < options->threads; ++i)
-    {
-        struct h2x_thread* thread = h2x_thread_new(options, h2x_processing_thread_function);
-        thread->next = thread_chain;
-        thread_chain = thread;
-    }
+    struct h2x_connection_manager* manager = malloc(sizeof(struct h2x_connection_manager));
+    h2x_connection_manager_init(options, manager);
 
-    return thread_chain;
+    return manager;
 }
 
 static int create_listener_socket(struct h2x_options* options)
@@ -166,7 +161,7 @@ void h2x_do_server(struct h2x_options* options)
 
     events = calloc(LISTENER_EVENT_COUNT, sizeof(struct epoll_event));
 
-    struct h2x_thread* threads = create_processing_threads(options);
+    struct h2x_connection_manager* manager = create_connection_manager(options);
 
     g_quit = false;
     while(!g_quit)
@@ -212,7 +207,7 @@ void h2x_do_server(struct h2x_options* options)
                         goto CLEANUP;
                     }
 
-                    close(incoming_fd);
+                    h2x_connection_manager_add_connection(manager, incoming_fd);
                 }
             }
             else
@@ -237,7 +232,7 @@ void h2x_do_server(struct h2x_options* options)
     }
 
 CLEANUP:
-    h2x_thread_shutdown(threads);
+    h2x_connection_manager_cleanup(manager);
     h2x_buffer_free(&stdin_buffer);
     free(events);
 
