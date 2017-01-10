@@ -1,5 +1,5 @@
 #include <h2x_connection.h>
-
+#include <h2x_stream.h>
 #include <stdlib.h>
 #include <memory.h>
 
@@ -14,12 +14,50 @@ static uint32_t stream_hash_function(void* arg)
     return stream->stream_identifier;
 }
 
+void stream_headers_received(struct h2x_stream* stream, struct h2x_frame* frame, void* data)
+{
+    struct h2x_connection* connection = (struct h2x_connection*)data;
+
+    if(connection->on_stream_headers_received)
+    {
+        struct h2x_header_list* headers = NULL;//decode and aggregate these.
+        connection->on_stream_headers_received(connection, headers,
+                                               stream->stream_identifier, connection->user_data);
+    }
+}
+
+void stream_data_received(struct h2x_stream* stream, struct h2x_frame* frame, bool final_frame, void* data)
+{
+    struct h2x_connection* connection = (struct h2x_connection*)data;
+
+    if(connection->on_stream_body_received)
+    {
+        connection->on_stream_body_received(connection, h2x_frame_get_payload(frame), h2x_frame_get_length(frame),
+                                            stream->stream_identifier, final_frame, connection->user_data);
+    }
+}
+
+void stream_error(struct h2x_stream* stream, struct h2x_frame* frame, enum H2X_STREAM_ERROR error, void* data)
+{
+    struct h2x_connection* connection = (struct h2x_connection*)data;
+
+    if(connection->on_stream_error)
+    {
+        connection->on_stream_error(connection, error, stream->stream_identifier, connection->user_data);
+    }
+}
+
 void h2x_connection_init(struct h2x_connection* connection, int fd, h2x_mode mode)
 {
     connection->fd = fd;
     connection->mode = mode;
     connection->current_frame_size = 0;
     connection->state = NOT_ON_FRAME;
+    connection->on_stream_headers_received = NULL;
+    connection->on_stream_body_received = NULL;
+    connection->on_stream_error = NULL;
+    connection->user_data = NULL;
+    h2x_frame_list_init(&connection->outgoing_frames);
 
     if(mode == H2X_MODE_SERVER)
     {
@@ -90,6 +128,14 @@ void h2x_connection_on_data_received(struct h2x_connection* connection, uint8_t*
     } while(read < data_length);
 }
 
+void set_stream_callbacks(struct h2x_connection* connection, struct h2x_stream* stream)
+{
+    stream->user_data = connection;
+    stream->on_data_received = &stream_data_received;
+    stream->on_headers_received = &stream_headers_received;
+    stream->on_error = &stream_error;
+}
+
 uint32_t h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame* frame)
 {
     struct h2x_stream* stream = h2x_hash_table_find(&connection->streams, h2x_frame_get_stream_identifier(frame));
@@ -100,10 +146,11 @@ uint32_t h2x_connection_push_frame_to_stream(struct h2x_connection *connection, 
         h2x_stream_init(stream);
         stream->stream_identifier = h2x_frame_get_stream_identifier(frame);
         stream->push_dir = STREAM_INBOUND;
+        set_stream_callbacks(connection, stream);
         h2x_hash_table_add(&connection->streams, stream);
     }
 
-    h2x_stream_push_frame(stream, frame);
+    h2x_stream_push_frame(stream, frame, &connection->outgoing_frames);
 }
 
 uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection)
@@ -115,8 +162,38 @@ uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection
     h2x_stream_init(stream);
     stream->stream_identifier = stream_id;
     stream->push_dir = STREAM_OUTBOUND;
+    set_stream_callbacks(connection, stream);
     h2x_hash_table_add(&connection->streams, stream);
 
     return stream_id;
 }
+
+struct h2x_frame* h2x_connection_pop_frame(struct h2x_connection* connection)
+{
+    return h2x_frame_list_pop(&connection->outgoing_frames);
+}
+
+void h2x_connection_set_stream_headers_receieved_callback(struct h2x_connection* connection,
+                                                          void(*callback)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t, void*))
+{
+    connection->on_stream_headers_received = callback;
+}
+
+void h2x_connection_set_stream_body_receieved_callback(struct h2x_connection* connection,
+                                                       void(*callback)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool finalFrame, void*))
+{
+    connection->on_stream_body_received = callback;
+}
+
+void h2x_connection_set_stream_error_callback(struct h2x_connection* connection,
+                                              void(*callback)(struct h2x_connection*, enum H2X_STREAM_ERROR, uint32_t, void*))
+{
+    connection->on_stream_error = callback;
+}
+
+void h2x_connection_set_user_data(struct h2x_connection* connection, void* user_data)
+{
+    connection->user_data = user_data;
+}
+
 

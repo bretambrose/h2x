@@ -1,5 +1,6 @@
 
 #include <h2x_stream.h>
+#include <h2x_frame.h>
 #include <stddef.h>
 
 static bool set_can_send_if_outbound(struct h2x_stream* stream)
@@ -14,14 +15,14 @@ static bool set_can_send_if_outbound(struct h2x_stream* stream)
 
 void h2x_stream_init(struct h2x_stream* stream)
 {
-    h2x_frame_list_init(&stream->outgoing_frames);
     stream->stream_identifier = 0;
     stream->state = IDLE;
+    stream->user_data = NULL;
     stream->on_headers_received = NULL;
     stream->push_dir = STREAM_NOT_INIT;
 }
 
-void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
+void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, struct h2x_frame_list* frame_list)
 {
     enum H2X_STREAM_STATE cur_state = stream->state;
     enum H2X_FRAME_TYPE frame_type = h2x_frame_get_type(frame);
@@ -36,7 +37,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
 
             if (stream->push_dir == STREAM_INBOUND && stream->on_headers_received)
             {
-                stream->on_headers_received(stream, frame);
+                stream->on_headers_received(stream, frame, stream->user_data);
             }
 
             should_send = set_can_send_if_outbound(stream);
@@ -52,7 +53,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
         stream->state = CLOSED;
         if (stream->on_error)
         {
-            stream->on_error(stream, frame, STREAM_PROTOCOL_ERROR);
+            stream->on_error(stream, frame, STREAM_PROTOCOL_ERROR, stream->user_data);
         }
         break;
 
@@ -85,7 +86,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
             stream->state = CLOSED;
             if (stream->on_error)
             {
-                stream->on_error(stream, frame, STREAM_PROTOCOL_ERROR);
+                stream->on_error(stream, frame, STREAM_PROTOCOL_ERROR, stream->user_data);
             }
             break;
         }
@@ -114,7 +115,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
 
                 if (stream->on_headers_received)
                 {
-                    stream->on_headers_received(stream, frame);
+                    stream->on_headers_received(stream, frame, stream->user_data);
                 }
                 break;
             }
@@ -143,7 +144,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
             {
                 if (stream->on_data_received)
                 {
-                    stream->on_data_received(stream, frame, finalFrame);
+                    stream->on_data_received(stream, frame, finalFrame, stream->user_data);
                 }
             }
         }
@@ -190,7 +191,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
                 stream->state = CLOSED;
                 if (stream->on_error)
                 {
-                    stream->on_error(stream, frame, STREAM_CLOSED);
+                    stream->on_error(stream, frame, STREAM_CLOSED, stream->user_data);
                 }
             }
             break;
@@ -215,16 +216,11 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame)
 
     if(should_send)
     {
-        h2x_frame_list_append(&stream->outgoing_frames, frame);
+        h2x_frame_list_append(frame_list, frame);
     }
 }
 
 void h2x_stream_set_state(struct h2x_stream* stream, enum H2X_STREAM_STATE state)
 {
     stream->state = state;
-}
-
-struct h2x_frame* h2x_stream_pop_frame(struct h2x_stream* stream)
-{
-    return h2x_frame_list_pop(&stream->outgoing_frames);
 }

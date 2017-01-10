@@ -12,7 +12,29 @@ struct h2x_frame
     uint32_t size;
 };
 
+enum H2X_FRAME_TYPE
+{
+    DATA = 0x00,
+    HEADERS = 0x01,
+    PRIORITY = 0x02,
+    RST_STREAM = 0x03,
+    SETTINGS = 0x04,
+    PUSH_PROMISE = 0x05,
+    PING = 0x06,
+    GOAWAY = 0x07,
+    WINDOW_UPDATE = 0x08,
+    CONTINUATION = 0x09
+};
+
+enum H2X_FRAME_FLAGS
+{
+    END_STREAM = 0x01,
+    PADDED = 0x08
+};
+
 void h2x_frame_init(struct h2x_frame* frame);
+
+void h2x_frame_cleanup(struct h2x_frame* frame);
 
 uint32_t h2x_frame_get_length(struct h2x_frame* frame);
 
@@ -36,26 +58,6 @@ uint8_t h2x_frame_set_type(struct h2x_frame* frame, enum H2X_FRAME_TYPE type);
 
 uint8_t h2x_frame_get_r(struct h2x_frame* frame);
 
-enum H2X_FRAME_TYPE
-{
-    DATA = 0x00,
-    HEADERS = 0x01,
-    PRIORITY = 0x02,
-    RST_STREAM = 0x03,
-    SETTINGS = 0x04,
-    PUSH_PROMISE = 0x05,
-    PING = 0x06,
-    GOAWAY = 0x07,
-    WINDOW_UPDATE = 0x08,
-    CONTINUATION = 0x09
-};
-
-enum H2X_FRAME_FLAGS
-{
-    END_STREAM = 0x01,
-    PADDED = 0x08
-};
-
 struct h2x_frame_list_node
 {
     struct h2x_frame* frame;
@@ -75,6 +77,6 @@ struct h2x_frame* h2x_frame_list_top(struct h2x_frame_list* list);
 
 struct h2x_frame* h2x_frame_list_pop(struct h2x_frame_list* list);
 
-void h2x_frame_list_append(struct h2x_frame_list* list, struct h2x_frame*);
+void h2x_frame_list_append(struct h2x_frame_list* list, struct h2x_frame* frame);
 
 #endif //H2X_H2X_FRAME_H_H
