@@ -4,15 +4,16 @@
 
 #include <string.h>
 #include <assert.h>
+#include <stdlib.h>
 
 //see rfc7540 section 4.1
 static const uint8_t HEADER_LENGTH = 9;
-static const uint16_t SHIFT_THREE_BYTES = 0x0180;
-static const uint16_t SHIFT_TWO_BYTES = 0x0100;
-static const uint8_t SHIFT_ONE_BYTE = 0x80;
-static const uint8_t SHIFT_SEVEN_BITS = 0x70;
+static const uint8_t SHIFT_THREE_BYTES = 0x18;
+static const uint8_t SHIFT_TWO_BYTES = 0x10;
+static const uint8_t SHIFT_ONE_BYTE = 0x08;
+static const uint8_t SHIFT_SEVEN_BITS = 0x07;
 static const uint32_t STREAM_ID_MASK = 0x7FFFFFFF;
-static const uint8_t R_MASK = 0x80;
+static const uint8_t R_MASK = 0x08;
 
 void h2x_frame_init(struct h2x_frame* frame)
 {
@@ -97,13 +98,13 @@ void h2x_frame_set_flags(struct h2x_frame* frame, uint8_t flags)
     frame->raw_data[4] = flags;
 }
 
-uint8_t h2x_frame_get_type(struct h2x_frame* frame)
+enum H2X_FRAME_TYPE h2x_frame_get_type(struct h2x_frame* frame)
 {
     assert(frame->size > HEADER_LENGTH);
-    return frame->raw_data[3];
+    return (enum H2X_FRAME_TYPE)frame->raw_data[3];
 }
 
-uint8_t h2x_frame_set_type(struct h2x_frame* frame, uint8_t type)
+uint8_t h2x_frame_set_type(struct h2x_frame* frame, enum H2X_FRAME_TYPE type)
 {
     assert(frame->size > HEADER_LENGTH);
     frame->raw_data[3] = type;
@@ -118,4 +119,57 @@ uint8_t h2x_frame_get_r(struct h2x_frame* frame)
     r >>= SHIFT_SEVEN_BITS;
 
     return r;
+}
+
+void h2x_frame_list_init(struct h2x_frame_list* list)
+{
+    list->frame_count = 0;
+    list->head = NULL;
+    list->tail = NULL;
+}
+
+struct h2x_frame* h2x_frame_list_top(struct h2x_frame_list* list)
+{
+    if(list->head)
+    {
+        return list->head->frame;
+    }
+
+    return NULL;
+}
+
+struct h2x_frame* h2x_frame_list_pop(struct h2x_frame_list* list)
+{
+    struct h2x_frame_list_node* cur_head = list->tail;
+
+    if(cur_head)
+    {
+        list->head = cur_head->next;
+        --list->frame_count;
+        struct h2x_frame* frame = cur_head->frame;
+        free(cur_head);
+        return frame;
+    }
+
+    return NULL;
+}
+
+void h2x_frame_list_append(struct h2x_frame_list* list, struct h2x_frame* frame)
+{
+    struct h2x_frame_list_node* new_node = (struct h2x_frame_list_node*)malloc(sizeof(struct h2x_frame_list_node));
+    new_node->frame = frame;
+    new_node->next = NULL;
+
+    if(!list->head)
+    {
+        list->tail = new_node;
+        list->head = new_node;
+    }
+    else
+    {
+        list->tail->next = new_node;
+        list->tail = list->tail->next;
+    }
+
+    ++list->frame_count;
 }
