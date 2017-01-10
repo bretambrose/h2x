@@ -88,10 +88,9 @@ void *h2x_processing_thread_function(void * arg)
 
     uint32_t max_connections = self->options->connections_per_thread;
     struct epoll_event* events = calloc(max_connections, sizeof(struct epoll_event));
-    uint8_t input_buffer[READ_BUFFER_SIZE];
-
     struct h2x_hash_table* connection_table = h2x_hash_table_init(self->options->connections_per_thread, connection_hash_function);
 
+    uint8_t input_buffer[READ_BUFFER_SIZE];
     bool done = false;
     while(!done)
     {
@@ -145,6 +144,7 @@ void *h2x_processing_thread_function(void * arg)
             }
         }
 
+        // begin read from shared state
         if(pthread_mutex_lock(&self->state_lock))
         {
             continue;
@@ -154,6 +154,7 @@ void *h2x_processing_thread_function(void * arg)
         struct h2x_socket* new_connections = self->new_connections;
         self->new_connections = NULL;
         pthread_mutex_unlock(&self->state_lock);
+        // end read from shared state
 
         if(new_connections)
         {
@@ -193,6 +194,8 @@ void *h2x_processing_thread_function(void * arg)
 
     free(events);
     close(epoll_fd);
+
+    h2x_hash_table_cleaup(connection_table);
 
     return NULL;
 }
