@@ -16,7 +16,7 @@ struct h2x_hash_table {
     uint32_t (*hash_function)(void*);
 };
 
-struct h2x_hash_table* h2x_hash_table_init(uint32_t buckets, uint32_t (*hash_function)(void*));
+void h2x_hash_table_init(struct h2x_hash_table* hash_table, uint32_t buckets, uint32_t (*hash_function)(void*));
 bool h2x_hash_table_add(struct h2x_hash_table* table, void* data);
 bool h2x_hash_table_remove(struct h2x_hash_table* table, uint32_t key);
 void* h2x_hash_table_find(struct h2x_hash_table* table, uint32_t key);

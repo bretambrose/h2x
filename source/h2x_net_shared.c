@@ -90,7 +90,8 @@ void *h2x_processing_thread_function(void * arg)
     struct epoll_event* events = calloc(max_connections, sizeof(struct epoll_event));
     uint8_t input_buffer[READ_BUFFER_SIZE];
 
-    struct h2x_hash_table* connection_table = h2x_hash_table_init(self->options->connections_per_thread, connection_hash_function);
+    struct h2x_hash_table* connection_table = (struct h2x_hash_table*)malloc(sizeof(struct h2x_hash_table));
+    h2x_hash_table_init(connection_table, self->options->connections_per_thread, connection_hash_function);
 
     bool done = false;
     while(!done)
@@ -162,7 +163,8 @@ void *h2x_processing_thread_function(void * arg)
             {
                 if(!done)
                 {
-                    struct h2x_connection *connection = h2x_connection_init(socket->fd, self->options->mode);
+                    struct h2x_connection* connection = (struct h2x_connection*)malloc(sizeof(struct h2x_connection));
+                    h2x_connection_init(connection, socket->fd, self->options->mode);
 
                     event.data.ptr = connection;
                     event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;

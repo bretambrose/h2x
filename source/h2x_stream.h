@@ -48,4 +48,5 @@ void h2x_stream_set_state(struct h2x_stream* stream, enum H2X_STREAM_STATE state
 
 struct h2x_frame* h2x_stream_pop_frame(struct h2x_stream* stream);
 
+
 #endif //H2X_H2X_STREAM_H
