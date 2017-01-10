@@ -63,22 +63,120 @@ static uint32_t connection_hash_function(void* data)
     return connection->fd;
 }
 
-static void cleanup_connection_table_entry(void *data)
+struct cleanup_context {
+    int epoll_fd;
+    struct h2x_connection_node** closed_connections_ptr;
+};
+
+static void cleanup_connection_table_entry(void *data, void* context)
 {
     struct h2x_connection* connection = data;
+    struct cleanup_context* clean_context = context;
 
-    close(connection->fd);
-    h2x_connection_cleanup(connection);
-    free(connection);
+    int ret_val = epoll_ctl(clean_context->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
+
+    struct h2x_connection_node** node_ptr = clean_context->closed_connections_ptr;
+
+    struct h2x_connection_node* node = malloc(sizeof(struct h2x_connection_node));
+    node->connection = connection;
+    node->next = *node_ptr;
+    *node_ptr = node;
+}
+
+static void release_closed_connections(struct h2x_thread* thread, struct h2x_connection_node* connections)
+{
+    if(!connections)
+    {
+        return;
+    }
+
+    struct h2x_connection_node *last_node = connections;
+    while(last_node->next != NULL)
+    {
+        last_node = last_node->next;
+    }
+
+    pthread_mutex_lock(thread->finished_connection_lock);
+
+    last_node->next = *(thread->finished_connections);
+    *(thread->finished_connections) = last_node;
+
+    pthread_mutex_unlock(thread->finished_connection_lock);
 }
 
 #define READ_BUFFER_SIZE 8192
+
+static bool process_epoll_event(struct epoll_event *event)
+{
+    struct h2x_connection* connection = event->data.ptr;
+    int event_fd = connection->fd;
+    int event_mask = event->events;
+    if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI | EPOLLOUT))))
+    {
+        fprintf (stderr, "epoll error. events=%u\n", event_mask);
+        return false;
+    }
+
+    bool should_close_connection = false;
+
+    // try and determine if succesfully established
+    /*
+     * TODO
+    if(connection->??)
+    {
+        ??;
+    }*/
+
+    if(event_mask & EPOLLIN)
+    {
+        uint8_t input_buffer[READ_BUFFER_SIZE];
+
+        while(1)
+        {
+            ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
+            if(count == -1)
+            {
+                if(errno != EAGAIN)
+                {
+                    should_close_connection = true;
+                }
+                break;
+            }
+            else if(count == 0)
+            {
+                should_close_connection = true;
+                break;
+            }
+            else
+            {
+                h2x_connection_on_data_received(connection, input_buffer, count);
+            }
+        }
+    }
+/*
+    if(event_mask & EPOLLOUT)
+    {
+        TODO
+
+        ??;
+
+        // if there's nothing left to write then we can remove the write event until
+        // something new needs to be written
+        if(??)
+        {
+            ??;
+        }
+    }*/
+
+    return should_close_connection;
+}
 
 void *h2x_processing_thread_function(void * arg)
 {
     struct h2x_thread* self = arg;
     struct epoll_event event;
     int ret_val;
+    struct h2x_connection_node* closed_connections = NULL;
 
     int epoll_fd = epoll_create1(0);
     if(epoll_fd == -1)
@@ -92,7 +190,6 @@ void *h2x_processing_thread_function(void * arg)
     struct h2x_hash_table* connection_table = (struct h2x_hash_table*)malloc(sizeof(struct h2x_hash_table));
     h2x_hash_table_init(connection_table, self->options->connections_per_thread, connection_hash_function);
 
-    uint8_t input_buffer[READ_BUFFER_SIZE];
     bool done = false;
     while(!done)
     {
@@ -100,50 +197,18 @@ void *h2x_processing_thread_function(void * arg)
         int i;
         for(i = 0; i < event_count; i++)
         {
-            struct h2x_connection* connection = events[i].data.ptr;
-            int event_fd = connection->fd;
-            int event_mask = events[i].events;
-            if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI))))
-            {
-                fprintf (stderr, "epoll error. events=%u\n", events[i].events);
-                continue;
-            }
+            bool should_close_connection = process_epoll_event(&events[i]);
 
-            bool close_connection = false;
-            while(1)
+            if(should_close_connection)
             {
-                ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
-                if(count == -1)
-                {
-                    if(errno != EAGAIN)
-                    {
-                        close_connection = true;
-                    }
-                    break;
-                }
-                else if(count == 0)
-                {
-                    close_connection = true;
-                    break;
-                }
-                else
-                {
-                    h2x_connection_on_data_received(connection, input_buffer, count);
-
-                    // server-only echo to stdout for now
-                    if(connection->mode == H2X_MODE_SERVER)
-                    {
-                        write(1, input_buffer, count);
-                    }
-                }
-            }
-
-            if(close_connection)
-            {
-                close(connection->fd);
+                struct h2x_connection* connection = events[i].data.ptr;
                 h2x_hash_table_remove(connection_table, connection->fd);
-                h2x_connection_cleanup(connection);
-                free(connection);
+                ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
+
+                struct h2x_connection_node* node = malloc(sizeof(struct h2x_connection_node));
+                node->connection = connection;
+                node->next = closed_connections;
+                closed_connections = node;
             }
         }
 
@@ -164,28 +229,37 @@ void *h2x_processing_thread_function(void * arg)
             struct h2x_socket* socket = new_connections;
             while(socket)
             {
+                bool should_close_connection = false;
+                struct h2x_connection* connection = (struct h2x_connection*)malloc(sizeof(struct h2x_connection));
+                h2x_connection_init(connection, socket->fd, self->options->mode);
+
                 if(!done)
                 {
-                    struct h2x_connection* connection = (struct h2x_connection*)malloc(sizeof(struct h2x_connection));
-                    h2x_connection_init(connection, socket->fd, self->options->mode);
-
                     event.data.ptr = connection;
-                    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
+                    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
 
                     ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket->fd, &event);
                     if (ret_val == -1)
                     {
                         fprintf(stderr, "Unable to register new socket with epoll instance\n");
-                        h2x_connection_cleanup(connection);
-                        free(connection);
-                        close(socket->fd);
+                        should_close_connection = true;
                     }
-
-                    h2x_hash_table_add(connection_table, connection);
+                    else
+                    {
+                        h2x_hash_table_add(connection_table, connection);
+                    }
                 }
                 else
                 {
-                    close(socket->fd);
+                    should_close_connection = true;
+                }
+
+                if(should_close_connection)
+                {
+                    struct h2x_connection_node* node = malloc(sizeof(struct h2x_connection_node));
+                    node->connection = connection;
+                    node->next = closed_connections;
+                    closed_connections = node;
                 }
 
                 struct h2x_socket* old_socket = socket;
@@ -193,15 +267,23 @@ void *h2x_processing_thread_function(void * arg)
                 free(old_socket);
             }
         }
+
+        release_closed_connections(self, closed_connections);
+        closed_connections = NULL;
     }
 
-    h2x_hash_table_visit(connection_table, cleanup_connection_table_entry);
+    struct cleanup_context processing_context;
+    processing_context.epoll_fd = epoll_fd;
+    processing_context.closed_connections_ptr = &closed_connections;
+
+    h2x_hash_table_visit(connection_table, cleanup_connection_table_entry, &processing_context);
+    h2x_hash_table_cleanup(connection_table);
+    free(connection_table);
+
+    release_closed_connections(self, closed_connections);
 
     free(events);
     close(epoll_fd);
-
-    h2x_hash_table_cleanup(connection_table);
-    free(connection_table);
 
     return NULL;
 }

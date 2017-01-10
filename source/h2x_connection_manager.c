@@ -1,5 +1,6 @@
 #include <h2x_connection_manager.h>
 
+#include <h2x_connection.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
 #include <h2x_thread.h>
@@ -8,14 +9,23 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-void h2x_connection_manager_init(struct h2x_options *options, struct h2x_connection_manager* connection_manager)
+int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connection_manager* connection_manager)
 {
+    connection_manager->options = options;
+    connection_manager->finished_connections = NULL;
+
+    if(!pthread_mutex_init(&connection_manager->finished_connection_lock, NULL))
+    {
+        return -1;
+    }
+
     int i;
     struct h2x_thread_node** thread_node = &connection_manager->processing_threads;
 
     for(i = 0; i < options->threads; ++i)
     {
         struct h2x_thread* thread = h2x_thread_new(options, h2x_processing_thread_function);
+        h2x_thread_set_finished_connection_channel(thread, &connection_manager->finished_connection_lock, &connection_manager->finished_connections);
 
         *thread_node = malloc(sizeof(struct h2x_thread_node));
         (*thread_node)->thread = thread;
@@ -69,6 +79,25 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
         thread_node = next_node;
     }
 
+    /* cleanup all finished connections */
+    /* don't need mutex because all other threads have exited at this point */
+    struct h2x_connection_node* connection_node = connection_manager->finished_connections;
+    while(connection_node)
+    {
+        struct h2x_connection* connection = connection_node->connection;
+        struct h2x_connection_node* next = connection_node->next;
+        int fd = connection->fd;
+
+        h2x_connection_cleanup(connection);
+        close(fd);
+        free(connection);
+
+        free(connection_node);
+        connection_node = next;
+    }
+
+    pthread_mutex_destroy(&connection_manager->finished_connection_lock);
+
     return 0;
 }
 
@@ -76,7 +105,7 @@ void h2x_connection_manager_add_connection(struct h2x_connection_manager* connec
 {
     struct h2x_thread* add_thread = NULL;
     uint32_t lowest_count = 0;
-    struct h2x_thread_node *thread_node = connection_manager->processing_threads;
+    struct h2x_thread_node* thread_node = connection_manager->processing_threads;
     while(thread_node)
     {
         uint32_t thread_connection_count = thread_node->thread->connection_count;
@@ -93,6 +122,36 @@ void h2x_connection_manager_add_connection(struct h2x_connection_manager* connec
     {
         fprintf(stderr, "Something went very wrong in h2x_connection_manager_add_connection\n");
         close(fd);
+    }
+}
+
+void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manager* manager)
+{
+    struct h2x_connection_node* finished_connections = NULL;
+
+    if(!pthread_mutex_lock(&manager->finished_connection_lock))
+    {
+        fprintf(stderr, "Unable to lock connection manager finished connections\n");
+        return;
+    }
+
+    finished_connections = manager->finished_connections;
+    manager->finished_connections = NULL;
+
+    pthread_mutex_unlock(&manager->finished_connection_lock);
+
+    struct h2x_connection_node* current_node = finished_connections;
+    while(current_node)
+    {
+        struct h2x_connection* connection = current_node->connection;
+        struct h2x_connection_node *next_node = current_node->next;
+
+        h2x_connection_cleanup(connection);
+        close(connection->fd);
+        free(connection);
+
+        free(current_node);
+        current_node = next_node;
     }
 }
 

@@ -22,17 +22,24 @@
 
 bool g_quit;
 
-static int handle_quit_command(int argc, char** argv)
+static int handle_quit_command(int argc, char** argv, void* context)
 {
     fprintf(stderr, "Shutting down client...\n");
     g_quit = true;
     return 0;
 }
 
-static int handle_connect_command(int argc, char** argv)
+static int handle_connect_command(int argc, char** argv, void* context)
 {
-    fprintf(stderr, "Connect called but not doing anything atm\n");
+    /*
+    //h2x_connection_manager* manager = context;
 
+    TODO
+    //??;
+
+    //h2x_connection_manager_add_connection(manager, fd);
+*/
+    
     return 0;
 }
 
@@ -122,9 +129,11 @@ void h2x_do_client(struct h2x_options* options)
                     h2x_buffer_write(input_buffer, count, &stdin_buffer);
                 }
 
-                h2x_command_process(&stdin_buffer, client_commands, CLIENT_COMMAND_COUNT);
+                h2x_command_process(&stdin_buffer, client_commands, CLIENT_COMMAND_COUNT, manager);
             }
         }
+
+        h2x_connection_manager_pump_closed_connections(manager);
     }
 
 CLEANUP:

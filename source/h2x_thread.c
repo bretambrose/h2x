@@ -43,6 +43,14 @@ CLEANUP_THREAD:
     return NULL;
 }
 
+void h2x_thread_set_finished_connection_channel(struct h2x_thread* thread,
+                                                pthread_mutex_t* finished_connection_lock,
+                                                struct h2x_connection_node** finished_connections)
+{
+    thread->finished_connection_lock = finished_connection_lock;
+    thread->finished_connections = finished_connections;
+}
+
 void h2x_thread_cleanup(struct h2x_thread* thread)
 {
     /* the child thread should have destroyed this already and nothing
