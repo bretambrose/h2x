@@ -125,6 +125,8 @@ void h2x_do_client(struct h2x_options* options)
                 h2x_command_process(&stdin_buffer, client_commands, CLIENT_COMMAND_COUNT);
             }
         }
+
+        h2x_connection_manager_pump_closed_connections(manager);
     }
 
 CLEANUP:

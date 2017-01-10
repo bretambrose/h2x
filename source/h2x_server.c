@@ -168,7 +168,7 @@ void h2x_do_server(struct h2x_options* options)
     {
         int event_count, i;
 
-        event_count = epoll_wait(epoll_fd, events, LISTENER_EVENT_COUNT, -1);
+        event_count = epoll_wait(epoll_fd, events, LISTENER_EVENT_COUNT, 10);
         for(i = 0; i < event_count; i++)
         {
             int event_fd = events[i].data.fd;
@@ -229,6 +229,8 @@ void h2x_do_server(struct h2x_options* options)
                 h2x_command_process(&stdin_buffer, server_commands, SERVER_COMMAND_COUNT);
             }
         }
+
+        h2x_connection_manager_pump_closed_connections(manager);
     }
 
 CLEANUP:

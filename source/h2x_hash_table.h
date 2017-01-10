@@ -22,6 +22,6 @@ void h2x_hash_table_cleanup(struct h2x_hash_table *table);
 bool h2x_hash_table_add(struct h2x_hash_table* table, void* data);
 bool h2x_hash_table_remove(struct h2x_hash_table* table, uint32_t key);
 void* h2x_hash_table_find(struct h2x_hash_table* table, uint32_t key);
-void h2x_hash_table_visit(struct h2x_hash_table *table, void (*visit_function)(void *));
+void h2x_hash_table_visit(struct h2x_hash_table *table, void (*visit_function)(void *, void*), void* context);
 
 #endif // H2X_HASH_TABLE_H

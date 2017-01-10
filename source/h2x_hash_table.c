@@ -97,14 +97,14 @@ void h2x_hash_table_cleanup(struct h2x_hash_table *table)
     free(table->buckets);
 }
 
-void h2x_hash_table_visit(struct h2x_hash_table *table, void (*visit_function)(void *))
+void h2x_hash_table_visit(struct h2x_hash_table *table, void (*visit_function)(void*, void*), void* context)
 {
     for(uint32_t i = 0; i < table->bucket_count; ++i)
     {
         struct h2x_hash_entry* entry = table->buckets[i];
         while(entry)
         {
-            (*visit_function)(entry->data);
+            (*visit_function)(entry->data, context);
             entry = entry->next;
         }
     }
