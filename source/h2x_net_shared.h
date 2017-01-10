@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+void *h2x_processing_thread_function(void * arg);
+
 int h2x_make_socket_nonblocking(int socket_fd);
 
 bool h2x_is_little_endian_system();
