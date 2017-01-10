@@ -130,7 +130,7 @@ void *h2x_processing_thread_function(void * arg)
                     h2x_connection_on_data_received(connection, input_buffer, count);
 
                     // server-only echo to stdout for now
-                    if(connection->options->mode == H2X_MODE_SERVER)
+                    if(connection->mode == H2X_MODE_SERVER)
                     {
                         write(1, input_buffer, count);
                     }
@@ -162,7 +162,7 @@ void *h2x_processing_thread_function(void * arg)
             {
                 if(!done)
                 {
-                    struct h2x_connection *connection = h2x_connection_init(socket->fd);
+                    struct h2x_connection *connection = h2x_connection_init(socket->fd, self->options->mode);
 
                     event.data.ptr = connection;
                     event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;

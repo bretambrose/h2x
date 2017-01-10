@@ -74,6 +74,8 @@ void* h2x_hash_table_find(struct h2x_hash_table* table, uint32_t key)
         {
             return entry_ptr;
         }
+
+        entry_ptr = entry_ptr->next;
     }
 
     return NULL;

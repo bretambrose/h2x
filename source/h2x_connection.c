@@ -2,10 +2,11 @@
 
 #include <stdlib.h>
 
-struct h2x_connection* h2x_connection_init(int fd)
+struct h2x_connection* h2x_connection_init(int fd, h2x_mode mode)
 {
     struct h2x_connection* connection = malloc(sizeof(struct h2x_connection));
     connection->fd = fd;
+    connection->mode = mode;
 
     return connection;
 }
