@@ -1,8 +1,8 @@
 #ifndef H2X_H2X_STREAM_H
 #define H2X_H2X_STREAM_H
 
-#include <h2x_frame.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 enum H2X_STREAM_STATE
 {
@@ -29,24 +29,24 @@ enum H2X_STREAM_ERROR
     STREAM_CLOSED = 0x05
 };
 
+struct h2x_frame;
+struct h2x_frame_list;
+
 struct h2x_stream
 {
     uint32_t stream_identifier;
     enum H2X_STREAM_PUSH_DIR push_dir;
-    struct h2x_frame_list outgoing_frames;
     enum H2X_STREAM_STATE state;
-    void(*on_headers_received)(struct h2x_stream*, struct h2x_frame*);
-    void(*on_data_received)(struct h2x_stream*, struct h2x_frame*, bool final_frame);
-    void(*on_error)(struct h2x_stream*, struct h2x_frame*, enum H2X_STREAM_ERROR);
+    void* user_data;
+    void(*on_headers_received)(struct h2x_stream*, struct h2x_frame*, void*);
+    void(*on_data_received)(struct h2x_stream*, struct h2x_frame*, bool final_frame, void*);
+    void(*on_error)(struct h2x_stream*, struct h2x_frame*, enum H2X_STREAM_ERROR, void*);
 };
 
 void h2x_stream_init(struct h2x_stream* stream);
 
-void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame);
+void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, struct h2x_frame_list* frame_list);
 
 void h2x_stream_set_state(struct h2x_stream* stream, enum H2X_STREAM_STATE state);
-
-struct h2x_frame* h2x_stream_pop_frame(struct h2x_stream* stream);
-
 
 #endif //H2X_H2X_STREAM_H

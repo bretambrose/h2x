@@ -20,6 +20,12 @@ void h2x_frame_init(struct h2x_frame* frame)
     frame->size = 0;
 }
 
+void h2x_frame_cleanup(struct h2x_frame* frame)
+{
+    free(frame->raw_data);
+    frame->size = 0;
+}
+
 uint32_t h2x_frame_get_length(struct h2x_frame* frame)
 {
     uint32_t frame_length = 0;
