@@ -11,6 +11,7 @@ static void intialize_options_defaults(struct h2x_options* options)
   options->connections_per_thread = 1000;
   options->port = 3333;
   options->mode = H2X_MODE_NONE;
+  options->security_protocol = H2X_SECURITY_NONE;
 }
 
 static int parse_h2x_mode(char** args, struct h2x_options* options)
@@ -26,6 +27,23 @@ static int parse_h2x_mode(char** args, struct h2x_options* options)
     return 0;
   }
   
+  fprintf(stderr, "Unknown argument for --mode option: %s\n", args[1]);
+  return -1;
+}
+
+static int parse_h2x_security_protocol(char** args, struct h2x_options* options)
+{
+  if(strcmp(args[1], "none") == 0)
+  {
+    options->security_protocol = H2X_SECURITY_NONE;
+    return 0;
+  }
+  else if(strcmp(args[1], "tls") == 0)
+  {
+    options->security_protocol = H2X_SECURITY_TLS;
+    return 0;
+  }
+
   fprintf(stderr, "Unknown argument for --mode option: %s\n", args[1]);
   return -1;
 }

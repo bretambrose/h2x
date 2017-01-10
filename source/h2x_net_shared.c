@@ -106,6 +106,71 @@ static void release_closed_connections(struct h2x_thread* thread, struct h2x_con
 
 #define READ_BUFFER_SIZE 8192
 
+static bool process_epoll_event(struct epoll_event *event)
+{
+    struct h2x_connection* connection = event->data.ptr;
+    int event_fd = connection->fd;
+    int event_mask = event->events;
+    if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI | EPOLLOUT))))
+    {
+        fprintf (stderr, "epoll error. events=%u\n", event_mask);
+        return false;
+    }
+
+    bool should_close_connection = false;
+
+    // try and determine if succesfully established
+    /*
+     * TODO
+    if(connection->??)
+    {
+        ??;
+    }*/
+
+    if(event_mask & EPOLLIN)
+    {
+        uint8_t input_buffer[READ_BUFFER_SIZE];
+
+        while(1)
+        {
+            ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
+            if(count == -1)
+            {
+                if(errno != EAGAIN)
+                {
+                    should_close_connection = true;
+                }
+                break;
+            }
+            else if(count == 0)
+            {
+                should_close_connection = true;
+                break;
+            }
+            else
+            {
+                h2x_connection_on_data_received(connection, input_buffer, count);
+            }
+        }
+    }
+/*
+    if(event_mask & EPOLLOUT)
+    {
+        TODO
+
+        ??;
+
+        // if there's nothing left to write then we can remove the write event until
+        // something new needs to be written
+        if(??)
+        {
+            ??;
+        }
+    }*/
+
+    return should_close_connection;
+}
+
 void *h2x_processing_thread_function(void * arg)
 {
     struct h2x_thread* self = arg;
@@ -125,7 +190,6 @@ void *h2x_processing_thread_function(void * arg)
     struct h2x_hash_table* connection_table = (struct h2x_hash_table*)malloc(sizeof(struct h2x_hash_table));
     h2x_hash_table_init(connection_table, self->options->connections_per_thread, connection_hash_function);
 
-    uint8_t input_buffer[READ_BUFFER_SIZE];
     bool done = false;
     while(!done)
     {
@@ -133,46 +197,11 @@ void *h2x_processing_thread_function(void * arg)
         int i;
         for(i = 0; i < event_count; i++)
         {
-            struct h2x_connection* connection = events[i].data.ptr;
-            int event_fd = connection->fd;
-            int event_mask = events[i].events;
-            if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI))))
-            {
-                fprintf (stderr, "epoll error. events=%u\n", events[i].events);
-                continue;
-            }
-
-            bool should_close_connection = false;
-            while(1)
-            {
-                ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
-                if(count == -1)
-                {
-                    if(errno != EAGAIN)
-                    {
-                        should_close_connection = true;
-                    }
-                    break;
-                }
-                else if(count == 0)
-                {
-                    should_close_connection = true;
-                    break;
-                }
-                else
-                {
-                    h2x_connection_on_data_received(connection, input_buffer, count);
-
-                    // server-only echo to stdout for now
-                    if(connection->mode == H2X_MODE_SERVER)
-                    {
-                        write(1, input_buffer, count);
-                    }
-                }
-            }
+            bool should_close_connection = process_epoll_event(&events[i]);
 
             if(should_close_connection)
             {
+                struct h2x_connection* connection = events[i].data.ptr;
                 h2x_hash_table_remove(connection_table, connection->fd);
                 ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
 
@@ -207,7 +236,7 @@ void *h2x_processing_thread_function(void * arg)
                 if(!done)
                 {
                     event.data.ptr = connection;
-                    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
+                    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
 
                     ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket->fd, &event);
                     if (ret_val == -1)

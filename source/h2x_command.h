@@ -10,10 +10,10 @@ struct command_def {
     char* command;
     int required_arguments;
     bool capture_all_last_required;
-    int (*handler)(int, char**);
+    int (*handler)(int, char**, void*);
     char* help;
 };
 
-void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count);
+void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count, void* context);
 
 #endif //H2X_COMMAND_H

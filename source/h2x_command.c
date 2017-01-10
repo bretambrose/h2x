@@ -166,7 +166,7 @@ static void split_args(struct command_def* command, char* command_args, int* arg
     }
 }
 
-static void process_command_line(struct command_def* command_definitions, int command_count, char *command, char *command_args)
+static void process_command_line(struct command_def* command_definitions, int command_count, char *command, char *command_args, void* context)
 {
     for(uint32_t i = 0; i < command_count; ++i)
     {
@@ -178,7 +178,7 @@ static void process_command_line(struct command_def* command_definitions, int co
 
             if(argc >= command_definitions[i].required_arguments)
             {
-                command_definitions[i].handler(argc, argv);
+                command_definitions[i].handler(argc, argv, context);
             }
             else
             {
@@ -204,7 +204,7 @@ static void process_command_line(struct command_def* command_definitions, int co
     fprintf(stderr, "Unknown command: %s\n", command);
 }
 
-void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count)
+void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count, void* context)
 {
     while(1)
     {
@@ -217,7 +217,7 @@ void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_
         }
 
 
-        process_command_line(command_definitions, command_count, command_begin, command_args_begin);
+        process_command_line(command_definitions, command_count, command_begin, command_args_begin, context);
         command_pullup(buffer, command_length);
     }
 }

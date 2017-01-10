@@ -20,7 +20,7 @@
 
 bool g_quit;
 
-static int handle_quit_command(int argc, char** argv)
+static int handle_quit_command(int argc, char** argv, void* context)
 {
     fprintf(stderr, "Shutting down server...\n");
     g_quit = true;
@@ -106,6 +106,7 @@ static int create_listener_socket(struct h2x_options* options)
 
 #define LISTENER_EVENT_COUNT 2
 #define READ_BUFFER_SIZE 8192
+#define STDIN_BUFFER_SIZE 512
 
 void h2x_do_server(struct h2x_options* options)
 {
@@ -117,7 +118,7 @@ void h2x_do_server(struct h2x_options* options)
     memset(&event, 0, sizeof(struct epoll_event));
 
     struct h2x_buffer stdin_buffer;
-    h2x_buffer_init(200, &stdin_buffer);
+    h2x_buffer_init(STDIN_BUFFER_SIZE, &stdin_buffer);
 
     listener_fd = create_listener_socket(options);
     if(listener_fd < 0)
@@ -226,7 +227,7 @@ void h2x_do_server(struct h2x_options* options)
                     h2x_buffer_write(input_buffer, count, &stdin_buffer);
                 }
 
-                h2x_command_process(&stdin_buffer, server_commands, SERVER_COMMAND_COUNT);
+                h2x_command_process(&stdin_buffer, server_commands, SERVER_COMMAND_COUNT, manager);
             }
         }
 
