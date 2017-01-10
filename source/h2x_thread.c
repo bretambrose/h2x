@@ -6,7 +6,7 @@
 struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *))
 {
     struct h2x_thread* thread = malloc(sizeof(struct h2x_thread));
-    
+
     thread->options = options;
     thread->new_connections = NULL;
     thread->should_quit = false;

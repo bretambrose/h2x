@@ -3,16 +3,13 @@
 #include <assert.h>
 #include <stdlib.h>
 
-struct h2x_hash_table* h2x_hash_table_init(uint32_t buckets, uint32_t (*hash_function)(void*))
+void h2x_hash_table_init(struct h2x_hash_table* hash_table, uint32_t buckets, uint32_t (*hash_function)(void*))
 {
     assert(buckets > 0);
 
-    struct h2x_hash_table* new_table = malloc(sizeof(struct h2x_hash_table));
-    new_table->bucket_count = buckets;
-    new_table->hash_function = hash_function;
-    new_table->buckets = calloc(buckets, sizeof(struct h2x_hash_entry*));
-
-    return new_table;
+    hash_table->bucket_count = buckets;
+    hash_table->hash_function = hash_function;
+    hash_table->buckets = calloc(buckets, sizeof(struct h2x_hash_entry*));
 }
 
 static uint32_t hash_key_to_bucket(struct h2x_hash_table* table, uint32_t key)
@@ -98,7 +95,6 @@ void h2x_hash_table_cleanup(struct h2x_hash_table *table)
         free_bucket(table->buckets[i]);
     }
     free(table->buckets);
-    free(table);
 }
 
 void h2x_hash_table_visit(struct h2x_hash_table *table, void (*visit_function)(void *))

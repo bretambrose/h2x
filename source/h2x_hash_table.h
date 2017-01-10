@@ -16,11 +16,12 @@ struct h2x_hash_table {
     uint32_t (*hash_function)(void*);
 };
 
-struct h2x_hash_table* h2x_hash_table_init(uint32_t buckets, uint32_t (*hash_function)(void*));
+void h2x_hash_table_init(struct h2x_hash_table* hash_table, uint32_t buckets, uint32_t (*hash_function)(void*));
+void h2x_hash_table_cleanup(struct h2x_hash_table *table);
+
 bool h2x_hash_table_add(struct h2x_hash_table* table, void* data);
 bool h2x_hash_table_remove(struct h2x_hash_table* table, uint32_t key);
 void* h2x_hash_table_find(struct h2x_hash_table* table, uint32_t key);
 void h2x_hash_table_visit(struct h2x_hash_table *table, void (*visit_function)(void *));
-void h2x_hash_table_cleanup(struct h2x_hash_table *table);
 
 #endif // H2X_HASH_TABLE_H

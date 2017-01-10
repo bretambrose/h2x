@@ -4,6 +4,8 @@
 
 #include <stdint.h>
 
+static const uint8_t FRAME_HEADER_LENGTH = 9;
+
 struct h2x_frame
 {
     uint8_t* raw_data;
