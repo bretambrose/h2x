@@ -8,12 +8,12 @@
 
 //see rfc7540 section 4.1
 static const uint8_t HEADER_LENGTH = 9;
-static const uint16_t SHIFT_THREE_BYTES = 0x0180;
-static const uint16_t SHIFT_TWO_BYTES = 0x0100;
-static const uint8_t SHIFT_ONE_BYTE = 0x80;
-static const uint8_t SHIFT_SEVEN_BITS = 0x70;
+static const uint8_t SHIFT_THREE_BYTES = 0x18;
+static const uint8_t SHIFT_TWO_BYTES = 0x10;
+static const uint8_t SHIFT_ONE_BYTE = 0x08;
+static const uint8_t SHIFT_SEVEN_BITS = 0x07;
 static const uint32_t STREAM_ID_MASK = 0x7FFFFFFF;
-static const uint8_t R_MASK = 0x80;
+static const uint8_t R_MASK = 0x08;
 
 void h2x_frame_init(struct h2x_frame* frame)
 {
