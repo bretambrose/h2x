@@ -133,6 +133,22 @@ void h2x_frame_list_init(struct h2x_frame_list* list)
     list->tail = NULL;
 }
 
+void h2x_frame_list_clean(struct h2x_frame_list* list)
+{
+    struct h2x_frame_list_node* cur = list->head;
+    while(cur != NULL)
+    {
+        struct h2x_frame_list_node* to_free = cur;
+        cur = cur->next;
+        free(to_free->frame);
+        free(to_free);
+    }
+
+    list->frame_count = 0;
+    list->head = NULL;
+    list->tail = NULL;
+}
+
 struct h2x_frame* h2x_frame_list_top(struct h2x_frame_list* list)
 {
     if(list->head)

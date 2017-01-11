@@ -28,6 +28,9 @@ struct h2x_connection {
     struct h2x_frame* current_outbound_frame;
     uint32_t current_outbound_frame_read_position;
 
+    uint32_t last_seen_stream_id;
+    h2x_frame_type last_seen_frame_type;
+
     /*
      Intrusive lists that chain together connections that require read and/or write work.
      We build and interate these chains starting from the epoll_wait return values,
@@ -48,7 +51,7 @@ struct h2x_connection {
     void* user_data;
     void(*on_stream_headers_received)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t stream_id, void*);
     void(*on_stream_body_received)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool lastFrame, void*);
-    void(*on_stream_error)(struct h2x_connection*, h2x_stream_error, uint32_t, void*);
+    void(*on_stream_error)(struct h2x_connection*, h2x_connection_error, uint32_t, void*);
 };
 
 void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* owner, int fd, h2x_mode mode);
@@ -60,7 +63,7 @@ void h2x_connection_set_stream_headers_receieved_callback(struct h2x_connection*
 void h2x_connection_set_stream_body_receieved_callback(struct h2x_connection* connection,
                                                        void(*callback)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool finalFrame, void*));
 void h2x_connection_set_stream_error_callback(struct h2x_connection* connection,
-                                              void(*callback)(struct h2x_connection*, h2x_stream_error, uint32_t, void*));
+                                              void(*callback)(struct h2x_connection*, h2x_connection_error, uint32_t, void*));
 
 void h2x_connection_set_user_data(struct h2x_connection* connection, void*);
 
@@ -76,5 +79,17 @@ void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connecti
 
 bool h2x_connection_validate(struct h2x_connection* connection);
 void h2x_connection_pump_outbound_frame(struct h2x_connection* connection);
+
+void h2x_connection_process_inbound_frame(struct h2x_connection* connection, struct h2x_frame* frame);
+void h2x_connection_process_outbound_frame(struct h2x_connection* connection, struct h2x_frame* frame);
+
+h2x_connection_error h2x_connection_handle_inbound_push_promise(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_header(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_continuation(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_stream_closed(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_stream_data(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_stream_window_update(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_stream_priority(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
+h2x_connection_error h2x_connection_handle_inbound_stream_error(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream, h2x_connection_error);
 
 #endif // H2X_CONNECTION_H

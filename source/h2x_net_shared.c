@@ -1,5 +1,6 @@
 #include <h2x_net_shared.h>
 
+#include <h2x_stream.h>
 #include <h2x_connection.h>
 #include <h2x_hash_table.h>
 #include <h2x_options.h>

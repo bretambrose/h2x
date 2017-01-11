@@ -37,10 +37,10 @@ typedef enum {
 } h2x_stream_push_dir;
 
 typedef enum {
-    H2X_STREAM_NO_ERROR = 0x00,
-    H2X_STREAM_PROTOCOL_ERROR = 0x01,
+    H2X_NO_ERROR = 0x00,
+    H2X_PROTOCOL_ERROR = 0x01,
     H2X_STREAM_CLOSED = 0x05
-} h2x_stream_error;
+} h2x_connection_error;
 
 typedef enum {
     H2X_DATA = 0x00,
@@ -57,7 +57,9 @@ typedef enum {
 
 typedef enum {
     H2X_END_STREAM = 0x01,
-    H2X_PADDED = 0x08
+    H2X_END_HEADERS = 0x04,
+    H2X_PADDED = 0x08,
+    H2X_PRIORITY_FLAG = 0x20
 } h2x_frame_flags;
 
 typedef enum {

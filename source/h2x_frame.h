@@ -56,6 +56,8 @@ struct h2x_frame_list
 
 void h2x_frame_list_init(struct h2x_frame_list* list);
 
+void h2x_frame_list_clean(struct h2x_frame_list* list);
+
 struct h2x_frame* h2x_frame_list_top(struct h2x_frame_list* list);
 
 struct h2x_frame* h2x_frame_list_pop(struct h2x_frame_list* list);
