@@ -13,9 +13,19 @@
 struct h2x_header_list;
 struct h2x_thread;
 
+struct h2x_socket_state {
+    int io_error;
+    uint32_t last_event_mask;
+    bool has_connected;
+    bool has_remote_hungup;
+};
+
+void h2x_socket_state_init(struct h2x_socket_state* socket_state);
+
 struct h2x_connection {
     struct h2x_thread* owner;
     int fd;
+    struct h2x_socket_state socket_state;
     struct h2x_hash_table streams;
     h2x_mode mode;
     uint32_t next_outgoing_stream_id;
@@ -41,7 +51,11 @@ struct h2x_connection {
      * There has to be a better way of doing this but I can't figure out how to detect
      * in-chain when you're the last element in the list without either adding a bool
      * or making the chain doubly-linked.  We don't actually need the back-tracking
-     * ability of a doubly-linked list, so just use bool markers
+     * ability of a doubly-linked list, so just use bool markers.
+     * If we ever need to remove a connection from a chain outside of
+     * the process iteration, then we'll need to go doubly-linked.
+     * One way we might end up doing that is if we try to be more responsive
+     * with closed connections
      */
     bool in_intrusive_chain[H2X_ICT_COUNT];
 
@@ -68,13 +82,11 @@ void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, stru
 uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection);
 
 struct h2x_frame* h2x_connection_pop_frame(struct h2x_connection* connection);
-bool h2x_connection_write_outbound_data(struct h2x_connection* connection);
 void h2x_connection_on_new_outbound_data(struct h2x_connection* connection);
 
 void h2x_connection_add_to_intrusive_chain(struct h2x_connection* connection, h2x_intrusive_chain_type chain);
 void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain);
 
-bool h2x_connection_validate(struct h2x_connection* connection);
 void h2x_connection_pump_outbound_frame(struct h2x_connection* connection);
 
 #endif // H2X_CONNECTION_H

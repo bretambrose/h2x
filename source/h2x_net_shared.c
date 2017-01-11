@@ -120,13 +120,32 @@ void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_eve
         struct h2x_connection* connection = event->data.ptr;
         int event_mask = event->events;
 
-        if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI | EPOLLOUT))))
+        connection->socket_state.last_event_mask = event_mask;
+
+        // assumption: receiving any epoll event on the socket implies either
+        // connected or error/failure
+        connection->socket_state.has_connected = true;
+
+        if(event_mask & (EPOLLERR | EPOLLHUP))
         {
-            fprintf (stderr, "epoll error. events=%u\n", event_mask);
-            continue; // TODO: how to handle this?
+            // give up completely, but try and fill out some error state but doing a read
+            // to get errno set
+            char fake_buffer[1];
+            read(connection->fd, fake_buffer, sizeof(fake_buffer));
+            connection->socket_state.io_error = errno;
+            connection->socket_state.has_remote_hungup = true;
+
+            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+            continue;
         }
 
-        if(event_mask & EPOLLIN)
+        if(event_mask & EPOLLRDHUP)
+        {
+            // go to read-only mode
+            connection->socket_state.has_remote_hungup = true;
+        }
+
+        if(event_mask & (EPOLLIN | EPOLLPRI))
         {
             h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_READ);
         }
@@ -150,19 +169,20 @@ void process_pending_read_chain(struct h2x_thread* thread)
     {
         bool is_read_finished = false;
         struct h2x_connection* connection = *read_connection_ptr;
-
-        bool should_close_connection = h2x_connection_validate(connection) == false;
+        bool should_close_connection = false;
 
         ssize_t count = read(connection->fd, read_buffer, READ_BUFFER_SIZE);
         if(count == -1)
         {
-            if(errno != EAGAIN)
+            if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
             {
+                connection->socket_state.io_error = errno;
                 should_close_connection = true;
             }
         }
         else if(count == 0)
         {
+            connection->socket_state.has_remote_hungup = true;
             should_close_connection = true;
         }
         else
@@ -198,26 +218,29 @@ void process_pending_write_chain(struct h2x_thread* thread)
     while(*write_connection_ptr != NULL)
     {
         struct h2x_connection* connection = *write_connection_ptr;
-        bool should_close_connection = h2x_connection_validate(connection) == false;
+        bool should_close_connection = false;
         bool is_write_finished = false;
+        bool should_attempt_to_write = !connection->socket_state.has_remote_hungup && connection->socket_state.has_connected;
 
         h2x_connection_pump_outbound_frame(connection);
-        if(connection->current_outbound_frame)
+        if(should_attempt_to_write && connection->current_outbound_frame)
         {
             uint32_t write_size = connection->current_outbound_frame->size - connection->current_outbound_frame_read_position;
+            assert(write_size > 0);
+
             ssize_t count = write(connection->fd, connection->current_outbound_frame->raw_data, write_size);
 
+            is_write_finished = count == write_size;
             if(count >= 0)
             {
-                is_write_finished = count == write_size;
                 connection->current_outbound_frame_read_position += count;
             }
             else
             {
-                is_write_finished = true;
-                if(errno != EAGAIN)
+                if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
                 {
                     should_close_connection = true;
+                    connection->socket_state.io_error = errno;
                 }
             }
         }
@@ -227,7 +250,7 @@ void process_pending_write_chain(struct h2x_thread* thread)
             h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
         }
 
-        if(is_write_finished || should_close_connection)
+        if(is_write_finished || should_close_connection || !should_attempt_to_write)
         {
             h2x_connection_remove_from_intrusive_chain(write_connection_ptr, H2X_ICT_PENDING_WRITE);
         }
@@ -294,6 +317,7 @@ void *h2x_processing_thread_function(void * arg)
                 if(!done)
                 {
                     event.data.ptr = connection;
+                    // don't need to explicitly subscribe to EPOLLERR and EPOLLHUP
                     event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
 
                     ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket->fd, &event);

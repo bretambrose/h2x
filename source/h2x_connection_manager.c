@@ -133,7 +133,7 @@ void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manage
 {
     struct h2x_connection* finished_connections = NULL;
 
-    if(!pthread_mutex_lock(&manager->finished_connection_lock))
+    if(pthread_mutex_lock(&manager->finished_connection_lock))
     {
         fprintf(stderr, "Unable to lock connection manager finished connections\n");
         return;

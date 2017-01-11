@@ -7,6 +7,14 @@
 #include <memory.h>
 #include <stdlib.h>
 
+void h2x_socket_state_init(struct h2x_socket_state* socket_state)
+{
+    socket_state->io_error = 0;
+    socket_state->last_event_mask = 0;
+    socket_state->has_connected = false;
+    socket_state->has_remote_hungup = false;
+}
+
 
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -79,6 +87,7 @@ void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* o
 {
     connection->owner = owner;
     connection->fd = fd;
+    h2x_socket_state_init(&connection->socket_state);
     connection->mode = mode;
     connection->current_frame_size = 0;
     connection->state = H2X_NOT_ON_FRAME;
@@ -274,26 +283,6 @@ void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connecti
     connection->intrusive_chains[chain] = NULL;
 }
 
-bool h2x_connection_validate(struct h2x_connection* connection)
-{
-    // try and determine if succesfully established
-    /*
-     * TODO
-    if(connection->??)
-    {
-        ??;
-    }*/
-    return 0;
-}
-
-/*
-static bool has_outbound_data(struct h2x_connection* connection)
-{
-    // TODO
-    return connection->current_outbound_frame != NULL;// || ??
-}
-*/
-
 void h2x_connection_on_new_outbound_data(struct h2x_connection* connection)
 {
     h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_WRITE);
@@ -317,13 +306,3 @@ void h2x_connection_pump_outbound_frame(struct h2x_connection* connection)
     }
 }
 
-bool h2x_connection_write_outbound_data(struct h2x_connection* connection)
-{
-    /*
-    TODO
-
-    ??;
-     */
-
-    return false;
-}
