@@ -83,19 +83,17 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
 
     /* cleanup all finished connections */
     /* don't need mutex because all other threads have exited at this point */
-    struct h2x_connection_node* connection_node = connection_manager->finished_connections;
-    while(connection_node)
+    struct h2x_connection* connection = connection_manager->finished_connections;
+    while(connection)
     {
-        struct h2x_connection* connection = connection_node->connection;
-        struct h2x_connection_node* next = connection_node->next;
+        struct h2x_connection* next_connection = connection->pending_close_chain;
         int fd = connection->fd;
 
         h2x_connection_cleanup(connection);
         close(fd);
         free(connection);
 
-        free(connection_node);
-        connection_node = next;
+        connection = next_connection;
     }
 
     pthread_mutex_destroy(&connection_manager->finished_connection_lock);
@@ -129,7 +127,7 @@ void h2x_connection_manager_add_connection(struct h2x_connection_manager* connec
 
 void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manager* manager)
 {
-    struct h2x_connection_node* finished_connections = NULL;
+    struct h2x_connection* finished_connections = NULL;
 
     if(!pthread_mutex_lock(&manager->finished_connection_lock))
     {
@@ -142,18 +140,16 @@ void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manage
 
     pthread_mutex_unlock(&manager->finished_connection_lock);
 
-    struct h2x_connection_node* current_node = finished_connections;
-    while(current_node)
+    struct h2x_connection* connection = finished_connections;
+    while(connection)
     {
-        struct h2x_connection* connection = current_node->connection;
-        struct h2x_connection_node *next_node = current_node->next;
+        struct h2x_connection *next_connection = connection->pending_close_chain;
 
         h2x_connection_cleanup(connection);
         close(connection->fd);
         free(connection);
 
-        free(current_node);
-        current_node = next_node;
+        connection = next_connection;
     }
 }
 

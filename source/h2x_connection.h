@@ -38,16 +38,12 @@ struct h2x_connection {
      */
     struct h2x_connection* pending_read_chain;
     struct h2x_connection* pending_write_chain;
+    struct h2x_connection* pending_close_chain;
 
     void* user_data;
     void(*on_stream_headers_received)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t stream_id, void*);
     void(*on_stream_body_received)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool lastFrame, void*);
     void(*on_stream_error)(struct h2x_connection*, h2x_stream_error, uint32_t, void*);
-};
-
-struct h2x_connection_node {
-    struct h2x_connection* connection;
-    struct h2x_connection_node* next;
 };
 
 void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* owner, int fd, h2x_mode mode);

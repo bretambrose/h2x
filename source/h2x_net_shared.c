@@ -63,43 +63,34 @@ static uint32_t connection_hash_function(void* data)
     return connection->fd;
 }
 
-struct cleanup_context {
-    int epoll_fd;
-    struct h2x_connection_node** closed_connections_ptr;
-};
-
 static void cleanup_connection_table_entry(void *data, void* context)
 {
     struct h2x_connection* connection = data;
-    struct cleanup_context* clean_context = context;
+    struct h2x_thread* thread = context;
 
-    epoll_ctl(clean_context->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
+    epoll_ctl(thread->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
 
-    struct h2x_connection_node** node_ptr = clean_context->closed_connections_ptr;
-
-    struct h2x_connection_node* node = malloc(sizeof(struct h2x_connection_node));
-    node->connection = connection;
-    node->next = *node_ptr;
-    *node_ptr = node;
+    connection->pending_close_chain = thread->pending_close_chain;
+    thread->pending_close_chain = connection;
 }
 
-static void release_closed_connections(struct h2x_thread* thread, struct h2x_connection_node* connections)
+static void release_closed_connections(struct h2x_thread* thread)
 {
-    if(!connections)
+    if(!thread->pending_close_chain)
     {
         return;
     }
 
-    struct h2x_connection_node *last_node = connections;
-    while(last_node->next != NULL)
+    struct h2x_connection *last_connection = thread->pending_close_chain;
+    while(last_connection->pending_close_chain != NULL)
     {
-        last_node = last_node->next;
+        last_connection = last_connection->pending_close_chain;
     }
 
     pthread_mutex_lock(thread->finished_connection_lock);
 
-    last_node->next = *(thread->finished_connections);
-    *(thread->finished_connections) = last_node;
+    last_connection->pending_close_chain = *(thread->finished_connections);
+    *(thread->finished_connections) = last_connection;
 
     pthread_mutex_unlock(thread->finished_connection_lock);
 }
@@ -167,7 +158,6 @@ void *h2x_processing_thread_function(void * arg)
     struct h2x_thread* self = arg;
     struct epoll_event event;
     int ret_val;
-    struct h2x_connection_node* closed_connections = NULL;
 
     int epoll_fd = epoll_create1(0);
     if(epoll_fd == -1)
@@ -175,6 +165,8 @@ void *h2x_processing_thread_function(void * arg)
         fprintf(stderr, "Unable to create epoll instance\n");
         return NULL;
     }
+
+    h2x_thread_set_epoll_fd(self, epoll_fd);
 
     uint32_t max_connections = self->options->connections_per_thread;
     struct epoll_event* events = calloc(max_connections, sizeof(struct epoll_event));
@@ -196,10 +188,8 @@ void *h2x_processing_thread_function(void * arg)
                 h2x_hash_table_remove(connection_table, connection->fd);
                 ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
 
-                struct h2x_connection_node* node = malloc(sizeof(struct h2x_connection_node));
-                node->connection = connection;
-                node->next = closed_connections;
-                closed_connections = node;
+                connection->pending_close_chain = self->pending_close_chain;
+                self->pending_close_chain = connection;
             }
         }
 
@@ -247,10 +237,8 @@ void *h2x_processing_thread_function(void * arg)
 
                 if(should_close_connection)
                 {
-                    struct h2x_connection_node* node = malloc(sizeof(struct h2x_connection_node));
-                    node->connection = connection;
-                    node->next = closed_connections;
-                    closed_connections = node;
+                    connection->pending_close_chain = self->pending_close_chain;
+                    self->pending_close_chain = connection;
                 }
 
                 struct h2x_socket* old_socket = socket;
@@ -259,19 +247,14 @@ void *h2x_processing_thread_function(void * arg)
             }
         }
 
-        release_closed_connections(self, closed_connections);
-        closed_connections = NULL;
+        release_closed_connections(self);
     }
 
-    struct cleanup_context processing_context;
-    processing_context.epoll_fd = epoll_fd;
-    processing_context.closed_connections_ptr = &closed_connections;
-
-    h2x_hash_table_visit(connection_table, cleanup_connection_table_entry, &processing_context);
+    h2x_hash_table_visit(connection_table, cleanup_connection_table_entry, self);
     h2x_hash_table_cleanup(connection_table);
     free(connection_table);
 
-    release_closed_connections(self, closed_connections);
+    release_closed_connections(self);
 
     free(events);
     close(epoll_fd);

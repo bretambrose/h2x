@@ -82,6 +82,7 @@ void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* o
 
     connection->pending_read_chain = NULL;
     connection->pending_write_chain = NULL;
+    connection->pending_close_chain = NULL;
 
     connection->on_stream_headers_received = NULL;
     connection->on_stream_body_received = NULL;

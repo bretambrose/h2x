@@ -6,14 +6,13 @@
 
 struct h2x_thread_node;
 struct h2x_options;
-struct h2x_connection_node;
 
 struct h2x_connection_manager {
     struct h2x_options* options;
     struct h2x_thread_node *processing_threads;
 
     pthread_mutex_t finished_connection_lock;
-    struct h2x_connection_node* finished_connections;
+    struct h2x_connection* finished_connections;
 };
 
 int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connection_manager* connection_manager);
