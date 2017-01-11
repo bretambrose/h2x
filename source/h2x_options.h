@@ -5,6 +5,7 @@
 
 #include <h2x_enum_types.h>
 
+#include <stdbool.h>
 #include <stdint.h>
 
 struct h2x_options {
@@ -13,6 +14,8 @@ struct h2x_options {
     uint16_t port;
     uint32_t threads;
     uint32_t connections_per_thread;
+    bool non_interactive;
+    bool protocol_debug;
 } h2x_options;
 
 int h2x_parse_options(int argc, char** argv, struct h2x_options* options);

@@ -5,6 +5,7 @@
 
 #include <assert.h>
 #include <memory.h>
+#include <stdio.h>
 #include <stdlib.h>
 
 void h2x_socket_state_init(struct h2x_socket_state* socket_state)
@@ -93,6 +94,8 @@ void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* o
     connection->state = H2X_NOT_ON_FRAME;
     connection->current_outbound_frame = NULL;
     connection->current_outbound_frame_read_position = 0;
+    connection->bytes_written = 0;
+    connection->bytes_read = 0;
 
     for(uint32_t i = 0; i < H2X_ICT_COUNT; ++i)
     {
@@ -255,6 +258,8 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection* connection, h2
         return;
     }
 
+    fprintf(stderr, "Adding connection %d to chain %d\n", connection->fd, (int) chain);
+
     struct h2x_thread* thread = connection->owner;
 
     assert(connection->intrusive_chains[chain] == NULL);
@@ -274,6 +279,8 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection* connection, h2
 
 void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain)
 {
+    fprintf(stderr, "Removing connection %d from chain %d\n", (*connection_ref)->fd, (int) chain);
+
     struct h2x_connection* connection = *connection_ref;
     assert(connection->in_intrusive_chain[chain]);
 

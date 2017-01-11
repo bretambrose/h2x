@@ -1,6 +1,7 @@
 #include <h2x_command.h>
 
 #include <h2x_buffer.h>
+#include <h2x_connection_manager.h>
 
 #include <ctype.h>
 #include <stdio.h>
@@ -222,3 +223,39 @@ void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_
     }
 }
 
+// Some common command implementations
+int h2x_command_handle_list_threads(int argc, char** argv, void* context)
+{
+    struct h2x_connection_manager* manager = context;
+
+    h2x_connection_manager_list_threads(manager);
+
+    return 0;
+}
+
+int h2x_command_handle_list_connections(int argc, char** argv, void* context)
+{
+    //struct h2x_connection_manager* manager = context;
+
+    //
+
+    return 0;
+}
+
+int h2x_command_handle_describe_thread(int argc, char** argv, void* context)
+{
+    //struct h2x_connection_manager* manager = context;
+
+    //
+
+    return 0;
+}
+
+int h2x_command_handle_describe_connection(int argc, char** argv, void* context)
+{
+    //struct h2x_connection_manager* manager = context;
+
+    //
+
+    return 0;
+}

@@ -17,4 +17,11 @@ struct command_def {
 
 void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, uint32_t command_count, void* context);
 
+
+// common command handlers
+int h2x_command_handle_list_threads(int argc, char** argv, void* context);
+int h2x_command_handle_list_connections(int argc, char** argv, void* context);
+int h2x_command_handle_describe_thread(int argc, char** argv, void* context);
+int h2x_command_handle_describe_connection(int argc, char** argv, void* context);
+
 #endif //H2X_COMMAND_H

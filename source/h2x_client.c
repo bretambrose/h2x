@@ -54,9 +54,11 @@ static int handle_connect_command(int argc, char** argv, void* context)
     dest_addr.sin_port = htons(atoi(argv[1]));
 
     //Connect to remote server
-    if(connect(socket_fd, (struct sockaddr *)&dest_addr , sizeof(dest_addr)) < 0)
+    int ret_val = connect(socket_fd, (struct sockaddr *)&dest_addr , sizeof(dest_addr));
+    if(ret_val < 0 && errno != EINPROGRESS)
     {
         fprintf(stderr, "Failed to connect to %s:%s  errno=%d\n", argv[0], argv[1], (int)errno);
+        close(socket_fd);
         return -1;
     }
 
@@ -68,7 +70,11 @@ static int handle_connect_command(int argc, char** argv, void* context)
 
 struct command_def client_commands[] = {
     { "quit", 0, false, handle_quit_command, "shuts down the client" },
-    { "connect", 2, false, handle_connect_command, "[dest ip] [dest port] - attempts to connect to an h2x server process" }
+    { "connect", 2, false, handle_connect_command, "[dest ip] [dest port] - attempts to connect to an h2x server process" },
+    { "list_threads", 0, false, h2x_command_handle_list_threads, "lists all connection manager threads" },
+    { "list_connections", 1, false, h2x_command_handle_list_connections, "[thread_id] - lists all connections within a thread" },
+    { "describe_thread", 1, false, h2x_command_handle_describe_thread, "[thread_id] - dumps detailed information about a thread" },
+    { "describe_connection", 1, false, h2x_command_handle_describe_connection, "[connection_id] [thread_id] - dumps details infromation about a connection" }
 };
 
 #define CLIENT_COMMAND_COUNT ((uint32_t)(sizeof(client_commands) / sizeof(struct command_def)))

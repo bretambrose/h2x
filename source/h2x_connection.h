@@ -38,6 +38,9 @@ struct h2x_connection {
     struct h2x_frame* current_outbound_frame;
     uint32_t current_outbound_frame_read_position;
 
+    uint64_t bytes_written;
+    uint64_t bytes_read;
+
     /*
      Intrusive lists that chain together connections that require read and/or write work.
      We build and interate these chains starting from the epoll_wait return values,

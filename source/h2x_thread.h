@@ -17,6 +17,7 @@ struct h2x_socket {
 
 struct h2x_thread {
     struct h2x_options* options;    // const, thread-safe read
+    uint32_t thread_id;             // const, thread-safe read
     pthread_t thread;               // const, thread-safe read
     uint32_t connection_count;      // non-const, only readable by connection manager thread
     int epoll_fd;
@@ -36,7 +37,7 @@ struct h2x_thread_node {
     struct h2x_thread* thread;
 };
 
-struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *));
+struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *), uint32_t thread_id);
 
 void h2x_thread_set_epoll_fd(struct h2x_thread* thread, int epoll_fd);
 void h2x_thread_set_finished_connection_channel(struct h2x_thread* thread,

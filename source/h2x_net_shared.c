@@ -13,6 +13,7 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include <string.h>
 
 int h2x_make_socket_nonblocking(int socket_fd)
 {
@@ -73,15 +74,20 @@ static void cleanup_connection_table_entry(void *data, void* context)
 
 static void release_closed_connections(struct h2x_thread* thread)
 {
+    fprintf(stderr, "Checking for closed connections\n");
+
     if(!thread->intrusive_chains[H2X_ICT_PENDING_CLOSE])
     {
         return;
     }
 
+    fprintf(stderr, "At least one closed connection exists!\n");
+
     // remove all the finished connections from our epoll instance
     struct h2x_connection *connection = thread->intrusive_chains[H2X_ICT_PENDING_CLOSE];
     while(connection)
     {
+        fprintf(stderr, "Removed connection %d from epoll\n", connection->fd);
         epoll_ctl(thread->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
         connection = connection->intrusive_chains[H2X_ICT_PENDING_CLOSE];
     }
@@ -125,6 +131,8 @@ void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_eve
         // assumption: receiving any epoll event on the socket implies either
         // connected or error/failure
         connection->socket_state.has_connected = true;
+
+        fprintf(stderr, "Received epoll event on fd %d with mask %d\n", connection->fd, event_mask);
 
         if(event_mask & (EPOLLERR | EPOLLHUP))
         {
@@ -187,7 +195,12 @@ void process_pending_read_chain(struct h2x_thread* thread)
         }
         else
         {
+            for(uint32_t i = 0; i < count; ++i)
+            {
+                fprintf(stderr, "Received %x\n", (int)read_buffer[i]);
+            }
             h2x_connection_on_data_received(connection, read_buffer, count);
+            connection->bytes_read += count;
         }
 
         if(count < READ_BUFFER_SIZE)
@@ -211,6 +224,8 @@ void process_pending_read_chain(struct h2x_thread* thread)
     }
 }
 
+char *test_string = "Hello!";
+
 void process_pending_write_chain(struct h2x_thread* thread)
 {
     // one round of writes
@@ -221,6 +236,16 @@ void process_pending_write_chain(struct h2x_thread* thread)
         bool should_close_connection = false;
         bool is_write_finished = false;
         bool should_attempt_to_write = !connection->socket_state.has_remote_hungup && connection->socket_state.has_connected;
+
+        // Debug
+        if(connection->bytes_written == 0 && !connection->current_outbound_frame)
+        {
+            struct h2x_frame *frame = malloc(sizeof(struct h2x_frame));
+            frame->size = strlen(test_string);
+            frame->raw_data = (uint8_t *)strdup(test_string);
+
+            connection->current_outbound_frame = frame;
+        }
 
         h2x_connection_pump_outbound_frame(connection);
         if(should_attempt_to_write && connection->current_outbound_frame)
@@ -234,6 +259,7 @@ void process_pending_write_chain(struct h2x_thread* thread)
             if(count >= 0)
             {
                 connection->current_outbound_frame_read_position += count;
+                connection->bytes_written += count;
             }
             else
             {
@@ -244,6 +270,11 @@ void process_pending_write_chain(struct h2x_thread* thread)
                 }
             }
         }
+        else
+        {
+            is_write_finished = true;
+        }
+
 
         if(should_close_connection)
         {
@@ -291,6 +322,7 @@ void *h2x_processing_thread_function(void * arg)
         {
             process_pending_read_chain(self);
             process_pending_write_chain(self);
+            fprintf(stderr, "did a read/write pass\n");
         }
 
         // begin read from shared state
