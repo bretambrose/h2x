@@ -31,6 +31,10 @@ struct h2x_connection {
     struct h2x_frame_list outgoing_frames;
     enum h2x_connection_state state;
 
+    struct h2x_frame* current_outbound_frame;
+    uint32_t current_outbound_frame_read_position;
+    bool subscribed_to_write_events;
+
     void* user_data;
     void(*on_stream_headers_received)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t stream_id, void*);
     void(*on_stream_body_received)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool lastFrame, void*);
@@ -59,5 +63,7 @@ uint32_t h2x_connection_push_frame_to_stream(struct h2x_connection *connection, 
 uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection);
 
 struct h2x_frame* h2x_connection_pop_frame(struct h2x_connection* connection);
+bool h2x_connection_write_outbound_data(struct h2x_connection* connection);
+void h2x_connection_on_new_outbound_data(struct h2x_connection* connection);
 
 #endif // H2X_CONNECTION_H

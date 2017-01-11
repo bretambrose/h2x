@@ -153,20 +153,11 @@ static bool process_epoll_event(struct epoll_event *event)
             }
         }
     }
-/*
+
     if(event_mask & EPOLLOUT)
     {
-        TODO
-
-        ??;
-
-        // if there's nothing left to write then we can remove the write event until
-        // something new needs to be written
-        if(??)
-        {
-            ??;
-        }
-    }*/
+        should_close_connection |= h2x_connection_write_outbound_data(connection);
+    }
 
     return should_close_connection;
 }

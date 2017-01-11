@@ -53,6 +53,10 @@ void h2x_connection_init(struct h2x_connection* connection, int fd, h2x_mode mod
     connection->mode = mode;
     connection->current_frame_size = 0;
     connection->state = NOT_ON_FRAME;
+    connection->current_outbound_frame = NULL;
+    connection->current_outbound_frame_read_position = 0;
+    connection->subscribed_to_write_events = true;
+
     connection->on_stream_headers_received = NULL;
     connection->on_stream_body_received = NULL;
     connection->on_stream_error = NULL;
@@ -196,4 +200,40 @@ void h2x_connection_set_user_data(struct h2x_connection* connection, void* user_
     connection->user_data = user_data;
 }
 
+static bool has_outbound_data(struct h2x_connection* connection)
+{
+    // TODO
+    return connection->current_outbound_frame != NULL;// || ??
+}
 
+void h2x_connection_on_new_outbound_data(struct h2x_connection* connection)
+{
+    /*
+     TODO
+    if(!connection->subscribed_to_write_events)
+    {
+        event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
+        ??;
+
+        subscribed_to_write_events = true;
+    }
+     */
+}
+
+bool h2x_connection_write_outbound_data(struct h2x_connection* connection)
+{
+    /*
+    TODO
+
+    ??;
+
+    // if there's nothing left to write then we can remove the write event until
+    // something new needs to be written
+    if(??)
+    {
+        ??;
+    }
+     */
+
+    return false;
+}
