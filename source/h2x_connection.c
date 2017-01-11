@@ -436,7 +436,108 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
 }
 
 void h2x_connection_process_outbound_frame(struct h2x_connection *connection, struct h2x_frame *frame) {
+    h2x_frame_type frame_type = h2x_frame_get_type(frame);
+    uint32_t stream_id = h2x_frame_get_stream_identifier(frame);
+    uint8_t frame_flags = h2x_frame_get_flags(frame);
+    //h2x_connection_error error = H2X_NO_ERROR;
 
+    struct h2x_stream* stream = h2x_hash_table_find(&connection->streams, stream_id);
+    assert(stream);
+
+    h2x_stream_state stream_state = stream->state;
+    h2x_stream_state next_state = stream_state;
+    bool valid_state = true;
+
+    switch(stream_state) {
+        case H2X_IDLE:
+            switch(frame_type)
+            {
+                case H2X_HEADERS:
+                    next_state = H2X_OPEN;
+                    break;
+                case H2X_PUSH_PROMISE:
+                    next_state = H2X_RESERVED_LOCAL;
+                    break;
+                default:
+                    valid_state = false;
+                    break;
+            }
+            break;
+        case H2X_RESERVED_LOCAL:
+            switch(frame_type)
+            {
+                case H2X_HEADERS:
+                    next_state = H2X_HALF_CLOSED_REMOTE;
+                    break;
+                case H2X_RST_STREAM:
+                    next_state = H2X_CLOSED;
+                    break;
+                case H2X_PRIORITY:
+                    break;
+                default:
+                    valid_state = false;
+                    break;
+            }
+            break;
+        case H2X_RESERVED_REMOTE:
+            switch(frame_type) {
+                case H2X_RST_STREAM:
+                    next_state = H2X_CLOSED;
+                    break;
+                case H2X_PRIORITY:
+                    break;
+                default:
+                    valid_state = false;
+                    break;
+            }
+            break;
+        case H2X_OPEN:
+            if(frame_flags & H2X_END_STREAM) {
+                next_state = H2X_HALF_CLOSED_REMOTE;
+            }
+            break;
+        case H2X_HALF_CLOSED_LOCAL:
+            switch(frame_type) {
+                case H2X_RST_STREAM:
+                    next_state = H2X_CLOSED;
+                    break;
+                case H2X_PRIORITY:
+                    break;
+                case H2X_WINDOW_UPDATE:
+                    break;
+                default:
+                    valid_state = false;
+                    break;
+            }
+            break;
+        case H2X_HALF_CLOSED_REMOTE:
+            switch(frame_type) {
+                case H2X_RST_STREAM:
+                    next_state = H2X_CLOSED;
+                    break;
+                default:
+                    break;
+            }
+            break;
+        case H2X_CLOSED:
+            switch(frame_type) {
+                case H2X_PRIORITY:
+                    break;
+                default:
+                    valid_state = false;
+                    break;
+            }
+            break;
+        default:
+            valid_state = false;
+            break;
+    }
+
+    if(valid_state) {
+        h2x_stream_set_state(stream, next_state);
+        h2x_frame_list_append(&connection->outgoing_frames, frame);
+        h2x_connection_on_new_outbound_data(connection);
+    }
 }
 
 h2x_connection_error h2x_connection_handle_inbound_push_promise(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream) {
