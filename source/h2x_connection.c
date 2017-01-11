@@ -14,12 +14,29 @@ static uint32_t stream_hash_function(void* arg)
     return stream->stream_identifier;
 }
 
+static void get_padding(struct h2x_frame* frame, uint8_t* padding_offset, uint8_t* padding_length)
+{
+    *padding_offset = 0;
+    *padding_length = 0;
+
+    if(h2x_frame_get_flags(frame) & PADDED)
+    {
+        *padding_offset = 1;
+        *padding_length = h2x_frame_get_payload(frame)[0];
+    }
+}
+
 void stream_headers_received(struct h2x_stream* stream, struct h2x_frame* frame, void* data)
 {
     struct h2x_connection* connection = (struct h2x_connection*)data;
 
     if(connection->on_stream_headers_received)
     {
+        uint8_t padding_offset = 0;
+        uint8_t padding_length = 0;
+
+        get_padding(frame, &padding_offset, &padding_length);
+
         struct h2x_header_list* headers = NULL;//decode and aggregate these.
         connection->on_stream_headers_received(connection, headers,
                                                stream->stream_identifier, connection->user_data);
@@ -32,7 +49,13 @@ void stream_data_received(struct h2x_stream* stream, struct h2x_frame* frame, bo
 
     if(connection->on_stream_body_received)
     {
-        connection->on_stream_body_received(connection, h2x_frame_get_payload(frame), h2x_frame_get_length(frame),
+        uint8_t padding_offset = 0;
+        uint8_t padding_length = 0;
+
+        get_padding(frame, &padding_offset, &padding_length);
+
+        connection->on_stream_body_received(connection, h2x_frame_get_payload(frame) + padding_offset,
+                                            h2x_frame_get_length(frame) - padding_length,
                                             stream->stream_identifier, final_frame, connection->user_data);
     }
 }
