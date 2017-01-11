@@ -60,4 +60,11 @@ typedef enum {
     H2X_PADDED = 0x08
 } h2x_frame_flags;
 
+typedef enum {
+    H2X_ICT_PENDING_READ,
+    H2X_ICT_PENDING_WRITE,
+    H2X_ICT_PENDING_CLOSE,
+    H2X_ICT_COUNT
+} h2x_intrusive_chain_type;
+
 #endif // H2X_ENUM_TYPES_H

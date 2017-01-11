@@ -36,9 +36,14 @@ struct h2x_connection {
      Processing reads can trigger adds to the write chain, but processing writes
      cannot trigger adds to either the read or write chain.
      */
-    struct h2x_connection* pending_read_chain;
-    struct h2x_connection* pending_write_chain;
-    struct h2x_connection* pending_close_chain;
+    struct h2x_connection* intrusive_chains[H2X_ICT_COUNT];
+    /*
+     * There has to be a better way of doing this but I can't figure out how to detect
+     * in-chain when you're the last element in the list without either adding a bool
+     * or making the chain doubly-linked.  We don't actually need the back-tracking
+     * ability of a doubly-linked list, so just use bool markers
+     */
+    bool in_intrusive_chain[H2X_ICT_COUNT];
 
     void* user_data;
     void(*on_stream_headers_received)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t stream_id, void*);
@@ -65,5 +70,11 @@ uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection
 struct h2x_frame* h2x_connection_pop_frame(struct h2x_connection* connection);
 bool h2x_connection_write_outbound_data(struct h2x_connection* connection);
 void h2x_connection_on_new_outbound_data(struct h2x_connection* connection);
+
+void h2x_connection_add_to_intrusive_chain(struct h2x_connection* connection, h2x_intrusive_chain_type chain);
+void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain);
+
+bool h2x_connection_validate(struct h2x_connection* connection);
+void h2x_connection_pump_outbound_frame(struct h2x_connection* connection);
 
 #endif // H2X_CONNECTION_H

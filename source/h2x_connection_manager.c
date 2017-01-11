@@ -81,12 +81,14 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
         thread_node = next_node;
     }
 
+    connection_manager->processing_threads = NULL;
+
     /* cleanup all finished connections */
     /* don't need mutex because all other threads have exited at this point */
     struct h2x_connection* connection = connection_manager->finished_connections;
     while(connection)
     {
-        struct h2x_connection* next_connection = connection->pending_close_chain;
+        struct h2x_connection* next_connection = connection->intrusive_chains[H2X_ICT_PENDING_CLOSE];
         int fd = connection->fd;
 
         h2x_connection_cleanup(connection);
@@ -95,6 +97,8 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
 
         connection = next_connection;
     }
+
+    connection_manager->finished_connections = NULL;
 
     pthread_mutex_destroy(&connection_manager->finished_connection_lock);
 
@@ -143,7 +147,7 @@ void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manage
     struct h2x_connection* connection = finished_connections;
     while(connection)
     {
-        struct h2x_connection *next_connection = connection->pending_close_chain;
+        struct h2x_connection *next_connection = connection->intrusive_chains[H2X_ICT_PENDING_CLOSE];
 
         h2x_connection_cleanup(connection);
         close(connection->fd);

@@ -5,6 +5,7 @@
 #include <h2x_options.h>
 #include <h2x_thread.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -66,91 +67,175 @@ static uint32_t connection_hash_function(void* data)
 static void cleanup_connection_table_entry(void *data, void* context)
 {
     struct h2x_connection* connection = data;
-    struct h2x_thread* thread = context;
 
-    epoll_ctl(thread->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
-
-    connection->pending_close_chain = thread->pending_close_chain;
-    thread->pending_close_chain = connection;
+    h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
 }
 
 static void release_closed_connections(struct h2x_thread* thread)
 {
-    if(!thread->pending_close_chain)
+    if(!thread->intrusive_chains[H2X_ICT_PENDING_CLOSE])
     {
         return;
     }
 
-    struct h2x_connection *last_connection = thread->pending_close_chain;
-    while(last_connection->pending_close_chain != NULL)
+    // remove all the finished connections from our epoll instance
+    struct h2x_connection *connection = thread->intrusive_chains[H2X_ICT_PENDING_CLOSE];
+    while(connection)
     {
-        last_connection = last_connection->pending_close_chain;
+        epoll_ctl(thread->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
+        connection = connection->intrusive_chains[H2X_ICT_PENDING_CLOSE];
     }
+
+    struct h2x_connection *last_connection = thread->intrusive_chains[H2X_ICT_PENDING_CLOSE];
+    while(last_connection->intrusive_chains[H2X_ICT_PENDING_CLOSE] != NULL)
+    {
+        assert(last_connection->intrusive_chains[H2X_ICT_PENDING_READ] == NULL);
+        assert(last_connection->intrusive_chains[H2X_ICT_PENDING_WRITE] == NULL);
+
+        last_connection = last_connection->intrusive_chains[H2X_ICT_PENDING_CLOSE];
+    }
+
+    assert(last_connection->intrusive_chains[H2X_ICT_PENDING_READ] == NULL);
+    assert(last_connection->intrusive_chains[H2X_ICT_PENDING_WRITE] == NULL);
 
     pthread_mutex_lock(thread->finished_connection_lock);
 
-    last_connection->pending_close_chain = *(thread->finished_connections);
+    last_connection->intrusive_chains[H2X_ICT_PENDING_CLOSE] = *(thread->finished_connections);
     *(thread->finished_connections) = last_connection;
 
     pthread_mutex_unlock(thread->finished_connection_lock);
 }
 
-#define READ_BUFFER_SIZE 8192
-
-static bool process_epoll_event(struct epoll_event *event)
+void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_event* events, int event_count)
 {
-    struct h2x_connection* connection = event->data.ptr;
-    int event_fd = connection->fd;
-    int event_mask = event->events;
-    if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI | EPOLLOUT))))
+    int i;
+    for(i = 0; i < H2X_ICT_COUNT; ++i)
     {
-        fprintf (stderr, "epoll error. events=%u\n", event_mask);
-        return false;
+        assert(thread->intrusive_chains[i] == NULL);
     }
 
-    bool should_close_connection = false;
-
-    // try and determine if succesfully established
-    /*
-     * TODO
-    if(connection->??)
+    for(i = 0; i < event_count; i++)
     {
-        ??;
-    }*/
+        struct epoll_event* event = events + i;
+        struct h2x_connection* connection = event->data.ptr;
+        int event_mask = event->events;
 
-    if(event_mask & EPOLLIN)
-    {
-        uint8_t input_buffer[READ_BUFFER_SIZE];
-
-        while(1)
+        if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI | EPOLLOUT))))
         {
-            ssize_t count = read(event_fd, input_buffer, READ_BUFFER_SIZE);
-            if(count == -1)
+            fprintf (stderr, "epoll error. events=%u\n", event_mask);
+            continue; // TODO: how to handle this?
+        }
+
+        if(event_mask & EPOLLIN)
+        {
+            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_READ);
+        }
+
+        if(event_mask & EPOLLOUT)
+        {
+            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_WRITE);
+        }
+    }
+}
+
+#define READ_BUFFER_SIZE 8192
+
+void process_pending_read_chain(struct h2x_thread* thread)
+{
+    uint8_t read_buffer[READ_BUFFER_SIZE];
+
+    // one round of reads
+    struct h2x_connection** read_connection_ptr = &thread->intrusive_chains[H2X_ICT_PENDING_READ];
+    while(*read_connection_ptr != NULL)
+    {
+        bool is_read_finished = false;
+        struct h2x_connection* connection = *read_connection_ptr;
+
+        bool should_close_connection = h2x_connection_validate(connection) == false;
+
+        ssize_t count = read(connection->fd, read_buffer, READ_BUFFER_SIZE);
+        if(count == -1)
+        {
+            if(errno != EAGAIN)
             {
+                should_close_connection = true;
+            }
+        }
+        else if(count == 0)
+        {
+            should_close_connection = true;
+        }
+        else
+        {
+            h2x_connection_on_data_received(connection, read_buffer, count);
+        }
+
+        if(count < READ_BUFFER_SIZE)
+        {
+            is_read_finished = true;
+        }
+
+        if(should_close_connection)
+        {
+            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+        }
+
+        if(is_read_finished || should_close_connection)
+        {
+            h2x_connection_remove_from_intrusive_chain(read_connection_ptr, H2X_ICT_PENDING_READ);
+        }
+        else
+        {
+            read_connection_ptr = &((*read_connection_ptr)->intrusive_chains[H2X_ICT_PENDING_READ]);
+        }
+    }
+}
+
+void process_pending_write_chain(struct h2x_thread* thread)
+{
+    // one round of writes
+    struct h2x_connection** write_connection_ptr = &thread->intrusive_chains[H2X_ICT_PENDING_WRITE];
+    while(*write_connection_ptr != NULL)
+    {
+        struct h2x_connection* connection = *write_connection_ptr;
+        bool should_close_connection = h2x_connection_validate(connection) == false;
+        bool is_write_finished = false;
+
+        h2x_connection_pump_outbound_frame(connection);
+        if(connection->current_outbound_frame)
+        {
+            uint32_t write_size = connection->current_outbound_frame->size - connection->current_outbound_frame_read_position;
+            ssize_t count = write(connection->fd, connection->current_outbound_frame->raw_data, write_size);
+
+            if(count >= 0)
+            {
+                is_write_finished = count == write_size;
+                connection->current_outbound_frame_read_position += count;
+            }
+            else
+            {
+                is_write_finished = true;
                 if(errno != EAGAIN)
                 {
                     should_close_connection = true;
                 }
-                break;
-            }
-            else if(count == 0)
-            {
-                should_close_connection = true;
-                break;
-            }
-            else
-            {
-                h2x_connection_on_data_received(connection, input_buffer, count);
             }
         }
-    }
 
-    if(event_mask & EPOLLOUT)
-    {
-        should_close_connection |= h2x_connection_write_outbound_data(connection);
-    }
+        if(should_close_connection)
+        {
+            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+        }
 
-    return should_close_connection;
+        if(is_write_finished || should_close_connection)
+        {
+            h2x_connection_remove_from_intrusive_chain(write_connection_ptr, H2X_ICT_PENDING_WRITE);
+        }
+        else
+        {
+            write_connection_ptr = &((*write_connection_ptr)->intrusive_chains[H2X_ICT_PENDING_WRITE]);
+        }
+    }
 }
 
 void *h2x_processing_thread_function(void * arg)
@@ -177,20 +262,12 @@ void *h2x_processing_thread_function(void * arg)
     while(!done)
     {
         int event_count = epoll_wait(epoll_fd, events, max_connections, 0);
-        int i;
-        for(i = 0; i < event_count; i++)
+        build_pending_read_write_chains(self, events, event_count);
+
+        while(self->intrusive_chains[H2X_ICT_PENDING_READ] || self->intrusive_chains[H2X_ICT_PENDING_WRITE])
         {
-            bool should_close_connection = process_epoll_event(&events[i]);
-
-            if(should_close_connection)
-            {
-                struct h2x_connection* connection = events[i].data.ptr;
-                h2x_hash_table_remove(connection_table, connection->fd);
-                ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
-
-                connection->pending_close_chain = self->pending_close_chain;
-                self->pending_close_chain = connection;
-            }
+            process_pending_read_chain(self);
+            process_pending_write_chain(self);
         }
 
         // begin read from shared state
@@ -237,8 +314,7 @@ void *h2x_processing_thread_function(void * arg)
 
                 if(should_close_connection)
                 {
-                    connection->pending_close_chain = self->pending_close_chain;
-                    self->pending_close_chain = connection;
+                    h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
                 }
 
                 struct h2x_socket* old_socket = socket;

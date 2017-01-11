@@ -1,7 +1,12 @@
 #include <h2x_connection.h>
+
 #include <h2x_stream.h>
-#include <stdlib.h>
+#include <h2x_thread.h>
+
+#include <assert.h>
 #include <memory.h>
+#include <stdlib.h>
+
 
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -80,9 +85,11 @@ void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* o
     connection->current_outbound_frame = NULL;
     connection->current_outbound_frame_read_position = 0;
 
-    connection->pending_read_chain = NULL;
-    connection->pending_write_chain = NULL;
-    connection->pending_close_chain = NULL;
+    for(uint32_t i = 0; i < H2X_ICT_COUNT; ++i)
+    {
+        connection->intrusive_chains[i] = NULL;
+        connection->in_intrusive_chain[i] = false;
+    }
 
     connection->on_stream_headers_received = NULL;
     connection->on_stream_body_received = NULL;
@@ -227,6 +234,58 @@ void h2x_connection_set_user_data(struct h2x_connection* connection, void* user_
     connection->user_data = user_data;
 }
 
+static bool h2x_connection_is_in_intrusive_chain(struct h2x_connection* connection, h2x_intrusive_chain_type chain)
+{
+    return connection->in_intrusive_chain[chain];
+}
+
+void h2x_connection_add_to_intrusive_chain(struct h2x_connection* connection, h2x_intrusive_chain_type chain)
+{
+    if(h2x_connection_is_in_intrusive_chain(connection, chain))
+    {
+        return;
+    }
+
+    struct h2x_thread* thread = connection->owner;
+
+    assert(connection->intrusive_chains[chain] == NULL);
+    assert(!connection->in_intrusive_chain[chain]);
+
+    connection->in_intrusive_chain[chain] = true;
+
+    if(thread->intrusive_chains[chain] == NULL)
+    {
+        thread->intrusive_chains[chain] = connection;
+        return;
+    }
+
+    connection->intrusive_chains[chain] = thread->intrusive_chains[chain];
+    thread->intrusive_chains[chain] = connection->intrusive_chains[chain];
+}
+
+void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain)
+{
+    struct h2x_connection* connection = *connection_ref;
+    assert(connection->in_intrusive_chain[chain]);
+
+    *connection_ref = (*connection_ref)->intrusive_chains[chain];
+
+    connection->in_intrusive_chain[chain] = false;
+    connection->intrusive_chains[chain] = NULL;
+}
+
+bool h2x_connection_validate(struct h2x_connection* connection)
+{
+    // try and determine if succesfully established
+    /*
+     * TODO
+    if(connection->??)
+    {
+        ??;
+    }*/
+    return 0;
+}
+
 /*
 static bool has_outbound_data(struct h2x_connection* connection)
 {
@@ -237,16 +296,25 @@ static bool has_outbound_data(struct h2x_connection* connection)
 
 void h2x_connection_on_new_outbound_data(struct h2x_connection* connection)
 {
-    /*
-     TODO
-    if(!connection->subscribed_to_write_events)
-    {
-        event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
-        ??;
+    h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_WRITE);
+}
 
-        subscribed_to_write_events = true;
+void h2x_connection_pump_outbound_frame(struct h2x_connection* connection)
+{
+    if(connection->current_outbound_frame &&
+       connection->current_outbound_frame_read_position >= connection->current_outbound_frame->size)
+    {
+        h2x_frame_cleanup(connection->current_outbound_frame);
+        free(connection->current_outbound_frame);
+
+        connection->current_outbound_frame = NULL;
     }
-     */
+
+    if(!connection->current_outbound_frame)
+    {
+        connection->current_outbound_frame = h2x_connection_pop_frame(connection);
+        connection->current_outbound_frame_read_position = 0;
+    }
 }
 
 bool h2x_connection_write_outbound_data(struct h2x_connection* connection)
@@ -255,13 +323,6 @@ bool h2x_connection_write_outbound_data(struct h2x_connection* connection)
     TODO
 
     ??;
-
-    // if there's nothing left to write then we can remove the write event until
-    // something new needs to be written
-    if(??)
-    {
-        ??;
-    }
      */
 
     return false;

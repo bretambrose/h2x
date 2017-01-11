@@ -2,6 +2,8 @@
 #ifndef H2X_THREAD_H
 #define H2X_THREAD_H
 
+#include <h2x_enum_types.h>
+
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -26,9 +28,7 @@ struct h2x_thread {
     pthread_mutex_t* finished_connection_lock;  // lock for global shared state between all processing threads and connection manager
     struct h2x_connection** finished_connections;
 
-    struct h2x_connection* pending_read_chain;
-    struct h2x_connection* pending_write_chain;
-    struct h2x_connection* pending_close_chain;
+    struct h2x_connection* intrusive_chains[H2X_ICT_COUNT];
 };
 
 struct h2x_thread_node {
