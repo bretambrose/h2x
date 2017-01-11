@@ -10,6 +10,8 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
     thread->options = options;
     thread->new_connections = NULL;
     thread->should_quit = false;
+    thread->pending_read_chain = NULL;
+    thread->pending_write_chain = NULL;
 
     if(pthread_mutex_init(&thread->state_lock, NULL))
     {

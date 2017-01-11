@@ -19,7 +19,7 @@ static void get_padding(struct h2x_frame* frame, uint8_t* padding_offset, uint8_
     *padding_offset = 0;
     *padding_length = 0;
 
-    if(h2x_frame_get_flags(frame) & PADDED)
+    if(h2x_frame_get_flags(frame) & H2X_PADDED)
     {
         *padding_offset = 1;
         *padding_length = h2x_frame_get_payload(frame)[0];
@@ -60,7 +60,7 @@ void stream_data_received(struct h2x_stream* stream, struct h2x_frame* frame, bo
     }
 }
 
-void stream_error(struct h2x_stream* stream, struct h2x_frame* frame, enum H2X_STREAM_ERROR error, void* data)
+void stream_error(struct h2x_stream* stream, struct h2x_frame* frame, h2x_stream_error error, void* data)
 {
     struct h2x_connection* connection = (struct h2x_connection*)data;
 
@@ -70,15 +70,18 @@ void stream_error(struct h2x_stream* stream, struct h2x_frame* frame, enum H2X_S
     }
 }
 
-void h2x_connection_init(struct h2x_connection* connection, int fd, h2x_mode mode)
+void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* owner, int fd, h2x_mode mode)
 {
+    connection->owner = owner;
     connection->fd = fd;
     connection->mode = mode;
     connection->current_frame_size = 0;
-    connection->state = NOT_ON_FRAME;
+    connection->state = H2X_NOT_ON_FRAME;
     connection->current_outbound_frame = NULL;
     connection->current_outbound_frame_read_position = 0;
-    connection->subscribed_to_write_events = true;
+
+    connection->pending_read_chain = NULL;
+    connection->pending_write_chain = NULL;
 
     connection->on_stream_headers_received = NULL;
     connection->on_stream_body_received = NULL;
@@ -112,7 +115,7 @@ void h2x_connection_on_data_received(struct h2x_connection* connection, uint8_t*
     {
         switch (connection->state)
         {
-        case NOT_ON_FRAME:
+        case H2X_NOT_ON_FRAME:
             connection->current_frame_read = 0;
             connection->current_frame_size = 0;
             connection->current_frame = (struct h2x_frame*) malloc(sizeof(struct h2x_frame));
@@ -120,10 +123,10 @@ void h2x_connection_on_data_received(struct h2x_connection* connection, uint8_t*
 
             connection->current_frame->raw_data = (uint8_t*)malloc(MAX_RECV_FRAME_SIZE);
             connection->current_frame->size = MAX_RECV_FRAME_SIZE;
-            connection->state = ON_HEADER;
+            connection->state = H2X_ON_HEADER;
             break;
 
-        case ON_HEADER:
+        case H2X_ON_HEADER:
             amount_to_read = min(data_length - read, FRAME_HEADER_LENGTH - connection->current_frame_read);
             memcpy(connection->current_frame->raw_data + connection->current_frame_read, data + read, amount_to_read);
             connection->current_frame_read += amount_to_read;
@@ -131,16 +134,16 @@ void h2x_connection_on_data_received(struct h2x_connection* connection, uint8_t*
 
             if(amount_to_read >= FRAME_HEADER_LENGTH)
             {
-                connection->state = HEADER_FILLED;
+                connection->state = H2X_HEADER_FILLED;
             }
             break;
 
-        case HEADER_FILLED:
+        case H2X_HEADER_FILLED:
             connection->current_frame_size = h2x_frame_get_length(connection->current_frame) + FRAME_HEADER_LENGTH;
-            connection->state = ON_DATA;
+            connection->state = H2X_ON_DATA;
             break;
 
-        case ON_DATA:
+        case H2X_ON_DATA:
             amount_to_read = min(data_length - read, connection->current_frame_size - FRAME_HEADER_LENGTH - connection->current_frame_read);
             memcpy(connection->current_frame->raw_data + connection->current_frame_read, data + read, amount_to_read);
             read += amount_to_read;
@@ -149,7 +152,7 @@ void h2x_connection_on_data_received(struct h2x_connection* connection, uint8_t*
             if(connection->current_frame_read == connection->current_frame_size)
             {
                 h2x_connection_push_frame_to_stream(connection, connection->current_frame);
-                connection->state = NOT_ON_FRAME;
+                connection->state = H2X_NOT_ON_FRAME;
             }
         }
     } while(read < data_length);
@@ -163,7 +166,7 @@ void set_stream_callbacks(struct h2x_connection* connection, struct h2x_stream* 
     stream->on_error = &stream_error;
 }
 
-uint32_t h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame* frame)
+void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame* frame)
 {
     struct h2x_stream* stream = h2x_hash_table_find(&connection->streams, h2x_frame_get_stream_identifier(frame));
 
@@ -172,7 +175,7 @@ uint32_t h2x_connection_push_frame_to_stream(struct h2x_connection *connection, 
         stream = (struct h2x_stream*)malloc(sizeof(struct h2x_stream));
         h2x_stream_init(stream);
         stream->stream_identifier = h2x_frame_get_stream_identifier(frame);
-        stream->push_dir = STREAM_INBOUND;
+        stream->push_dir = H2X_STREAM_INBOUND;
         set_stream_callbacks(connection, stream);
         h2x_hash_table_add(&connection->streams, stream);
     }
@@ -188,7 +191,7 @@ uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection
     struct h2x_stream* stream = (struct h2x_stream*)malloc(sizeof(struct h2x_stream));
     h2x_stream_init(stream);
     stream->stream_identifier = stream_id;
-    stream->push_dir = STREAM_OUTBOUND;
+    stream->push_dir = H2X_STREAM_OUTBOUND;
     set_stream_callbacks(connection, stream);
     h2x_hash_table_add(&connection->streams, stream);
 
@@ -213,7 +216,7 @@ void h2x_connection_set_stream_body_receieved_callback(struct h2x_connection* co
 }
 
 void h2x_connection_set_stream_error_callback(struct h2x_connection* connection,
-                                              void(*callback)(struct h2x_connection*, enum H2X_STREAM_ERROR, uint32_t, void*))
+                                              void(*callback)(struct h2x_connection*, h2x_stream_error, uint32_t, void*))
 {
     connection->on_stream_error = callback;
 }
@@ -223,11 +226,13 @@ void h2x_connection_set_user_data(struct h2x_connection* connection, void* user_
     connection->user_data = user_data;
 }
 
+/*
 static bool has_outbound_data(struct h2x_connection* connection)
 {
     // TODO
     return connection->current_outbound_frame != NULL;// || ??
 }
+*/
 
 void h2x_connection_on_new_outbound_data(struct h2x_connection* connection)
 {

@@ -5,7 +5,7 @@
 
 static bool set_can_send_if_outbound(struct h2x_stream* stream)
 {
-    if(stream->push_dir == STREAM_OUTBOUND)
+    if(stream->push_dir == H2X_STREAM_OUTBOUND)
     {
         return true;
     }
@@ -16,26 +16,26 @@ static bool set_can_send_if_outbound(struct h2x_stream* stream)
 void h2x_stream_init(struct h2x_stream* stream)
 {
     stream->stream_identifier = 0;
-    stream->state = IDLE;
+    stream->state = H2X_IDLE;
     stream->user_data = NULL;
     stream->on_headers_received = NULL;
-    stream->push_dir = STREAM_NOT_INIT;
+    stream->push_dir = H2X_STREAM_NOT_INIT;
 }
 
 void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, struct h2x_frame_list* frame_list)
 {
-    enum H2X_STREAM_STATE cur_state = stream->state;
-    enum H2X_FRAME_TYPE frame_type = h2x_frame_get_type(frame);
+    h2x_stream_state cur_state = stream->state;
+    h2x_frame_type frame_type = h2x_frame_get_type(frame);
     bool should_send = false;
 
     switch(cur_state)
     {
-    case IDLE:
-        if (frame_type == HEADERS)
+    case H2X_IDLE:
+        if (frame_type == H2X_HEADERS)
         {
-            stream->state = OPEN;
+            stream->state = H2X_OPEN;
 
-            if (stream->push_dir == STREAM_INBOUND && stream->on_headers_received)
+            if (stream->push_dir == H2X_STREAM_INBOUND && stream->on_headers_received)
             {
                 stream->on_headers_received(stream, frame, stream->user_data);
             }
@@ -43,38 +43,38 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, s
             should_send = set_can_send_if_outbound(stream);
             break;
         }
-        else if (frame_type == PRIORITY)
+        else if (frame_type == H2X_PRIORITY)
         {
             should_send = set_can_send_if_outbound(stream);
             //do priority stuff here.
             break;
         }
 
-        stream->state = CLOSED;
+        stream->state = H2X_CLOSED;
         if (stream->on_error)
         {
-            stream->on_error(stream, frame, STREAM_PROTOCOL_ERROR, stream->user_data);
+            stream->on_error(stream, frame, H2X_STREAM_PROTOCOL_ERROR, stream->user_data);
         }
         break;
 
-    case RESERVED_LOCAL:
-        if (frame_type == RST_STREAM)
+    case H2X_RESERVED_LOCAL:
+        if (frame_type == H2X_RST_STREAM)
         {
             should_send = set_can_send_if_outbound(stream);
-            stream->state = CLOSED;
+            stream->state = H2X_CLOSED;
             break;
         }
 
-        if (stream->push_dir == STREAM_OUTBOUND)
+        if (stream->push_dir == H2X_STREAM_OUTBOUND)
         {
-            if (frame_type == HEADERS)
+            if (frame_type == H2X_HEADERS)
             {
                 should_send = set_can_send_if_outbound(stream);
-                stream->state = HALF_CLOSED_REMOTE;
+                stream->state = H2X_HALF_CLOSED_REMOTE;
                 break;
             }
 
-            if (frame_type == PRIORITY)
+            if (frame_type == H2X_PRIORITY)
             {
                 should_send = set_can_send_if_outbound(stream);
                 //priority stuff here:
@@ -83,35 +83,35 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, s
         }
         else
         {
-            stream->state = CLOSED;
+            stream->state = H2X_CLOSED;
             if (stream->on_error)
             {
-                stream->on_error(stream, frame, STREAM_PROTOCOL_ERROR, stream->user_data);
+                stream->on_error(stream, frame, H2X_STREAM_PROTOCOL_ERROR, stream->user_data);
             }
             break;
         }
 
         break;
 
-    case RESERVED_REMOTE:
-        if (frame_type == RST_STREAM)
+    case H2X_RESERVED_REMOTE:
+        if (frame_type == H2X_RST_STREAM)
         {
             should_send = set_can_send_if_outbound(stream);
-            stream->state = CLOSED;
+            stream->state = H2X_CLOSED;
             break;
         }
 
-        if (frame_type == PRIORITY || frame_type == WINDOW_UPDATE)
+        if (frame_type == H2X_PRIORITY || frame_type == H2X_WINDOW_UPDATE)
         {
             should_send = set_can_send_if_outbound(stream);
             break;
         }
 
-        if (stream->push_dir == STREAM_INBOUND)
+        if (stream->push_dir == H2X_STREAM_INBOUND)
         {
-            if (frame_type == HEADERS)
+            if (frame_type == H2X_HEADERS)
             {
-                stream->state = HALF_CLOSED_LOCAL;
+                stream->state = H2X_HALF_CLOSED_LOCAL;
 
                 if (stream->on_headers_received)
                 {
@@ -122,25 +122,25 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, s
         }
         break;
 
-    case OPEN:
+    case H2X_OPEN:
         should_send = set_can_send_if_outbound(stream);
 
-        if (frame_type == RST_STREAM)
+        if (frame_type == H2X_RST_STREAM)
         {
-            stream->state = CLOSED;
+            stream->state = H2X_CLOSED;
             break;
         }
 
-        if(frame_type == DATA)
+        if(frame_type == H2X_DATA)
         {
             bool finalFrame = false;
-            if (h2x_frame_get_flags(frame) | END_STREAM)
+            if (h2x_frame_get_flags(frame) | H2X_END_STREAM)    // TODO: fix this
             {
                 finalFrame = true;
-                stream->state = stream->push_dir == STREAM_INBOUND ? HALF_CLOSED_REMOTE : HALF_CLOSED_LOCAL;
+                stream->state = stream->push_dir == H2X_STREAM_INBOUND ? H2X_HALF_CLOSED_REMOTE : H2X_HALF_CLOSED_LOCAL;
             }
 
-            if(stream->push_dir == STREAM_INBOUND)
+            if(stream->push_dir == H2X_STREAM_INBOUND)
             {
                 if (stream->on_data_received)
                 {
@@ -150,26 +150,26 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, s
         }
 
         break;
-    case HALF_CLOSED_LOCAL:
-        if(frame_type == RST_STREAM)
+    case H2X_HALF_CLOSED_LOCAL:
+        if(frame_type == H2X_RST_STREAM)
         {
             should_send = set_can_send_if_outbound(stream);
-            stream->state = CLOSED;
+            stream->state = H2X_CLOSED;
             break;
         }
 
-        if(stream->push_dir == STREAM_INBOUND)
+        if(stream->push_dir == H2X_STREAM_INBOUND)
         {
-            if(h2x_frame_get_flags(frame) | END_STREAM)
+            if(h2x_frame_get_flags(frame) | H2X_END_STREAM)     // TODO: this
             {
-                stream->state = CLOSED;
+                stream->state = H2X_CLOSED;
                 break;
             }
             break;
         }
         else
         {
-            if(frame_type == WINDOW_UPDATE || frame_type == PRIORITY)
+            if(frame_type == H2X_WINDOW_UPDATE || frame_type == H2X_PRIORITY)
             {
                 should_send = set_can_send_if_outbound(stream);
                 //do stuff.
@@ -178,36 +178,36 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, s
             break;
         }
 
-    case HALF_CLOSED_REMOTE:
-        if(stream->push_dir == STREAM_INBOUND)
+    case H2X_HALF_CLOSED_REMOTE:
+        if(stream->push_dir == H2X_STREAM_INBOUND)
         {
-            if(frame_type == WINDOW_UPDATE || frame_type == PRIORITY || frame_type == RST_STREAM)
+            if(frame_type == H2X_WINDOW_UPDATE || frame_type == H2X_PRIORITY || frame_type == H2X_RST_STREAM)
             {
                 //do stuff.
 
             }
             else
             {
-                stream->state = CLOSED;
+                stream->state = H2X_CLOSED;
                 if (stream->on_error)
                 {
-                    stream->on_error(stream, frame, STREAM_CLOSED, stream->user_data);
+                    stream->on_error(stream, frame, H2X_STREAM_CLOSED, stream->user_data);
                 }
             }
             break;
         }
 
-        if(frame_type == RST_STREAM ||
-                (frame_type == DATA && h2x_frame_get_flags(frame) | END_STREAM))
+        if(frame_type == H2X_RST_STREAM ||
+                (frame_type == H2X_DATA && h2x_frame_get_flags(frame) | H2X_END_STREAM))    // TODO: vut iz dis?
         {
-            stream->state = CLOSED;
+            stream->state = H2X_CLOSED;
             should_send = set_can_send_if_outbound(stream);
             break;
         }
 
         should_send = true;
         break;
-    case CLOSED:
+    case H2X_CLOSED:
         //maybe handle priority here?
         break;
     default:
@@ -220,7 +220,7 @@ void h2x_stream_push_frame(struct h2x_stream* stream, struct h2x_frame* frame, s
     }
 }
 
-void h2x_stream_set_state(struct h2x_stream* stream, enum H2X_STREAM_STATE state)
+void h2x_stream_set_state(struct h2x_stream* stream, h2x_stream_state state)
 {
     stream->state = state;
 }

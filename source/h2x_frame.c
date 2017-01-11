@@ -103,13 +103,13 @@ void h2x_frame_set_flags(struct h2x_frame* frame, uint8_t flags)
     frame->raw_data[4] = flags;
 }
 
-enum H2X_FRAME_TYPE h2x_frame_get_type(struct h2x_frame* frame)
+h2x_frame_type h2x_frame_get_type(struct h2x_frame* frame)
 {
     assert(frame->size > FRAME_HEADER_LENGTH);
-    return (enum H2X_FRAME_TYPE)frame->raw_data[3];
+    return (h2x_frame_type)frame->raw_data[3];
 }
 
-uint8_t h2x_frame_set_type(struct h2x_frame* frame, enum H2X_FRAME_TYPE type)
+void h2x_frame_set_type(struct h2x_frame* frame, h2x_frame_type type)
 {
     assert(frame->size > FRAME_HEADER_LENGTH);
     frame->raw_data[3] = type;

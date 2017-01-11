@@ -19,7 +19,7 @@ int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connecti
         return -1;
     }
 
-    int i;
+    uint32_t i;
     struct h2x_thread_node** thread_node = &connection_manager->processing_threads;
 
     for(i = 0; i < options->threads; ++i)
@@ -33,6 +33,8 @@ int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connecti
 
         thread_node = &((*thread_node)->next);
     }
+
+    return 0;
 }
 
 int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_manager)

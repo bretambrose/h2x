@@ -33,7 +33,6 @@ static int handle_quit_command(int argc, char** argv, void* context)
 
 static int handle_connect_command(int argc, char** argv, void* context)
 {
-    int socket_desc;
     struct sockaddr_in dest_addr;
 
     //Create socket
@@ -72,7 +71,7 @@ struct command_def client_commands[] = {
     { "connect", 2, false, handle_connect_command, "[dest ip] [dest port] - attempts to connect to an h2x server process" }
 };
 
-#define CLIENT_COMMAND_COUNT (sizeof(client_commands) / sizeof(struct command_def))
+#define CLIENT_COMMAND_COUNT ((uint32_t)(sizeof(client_commands) / sizeof(struct command_def)))
 
 
 static struct h2x_connection_manager* create_connection_manager(struct h2x_options* options)
@@ -85,7 +84,7 @@ static struct h2x_connection_manager* create_connection_manager(struct h2x_optio
 
 void h2x_do_client(struct h2x_options* options)
 {
-    int listener_fd = -1, epoll_fd = -1;
+    int epoll_fd = -1;
     int ret_val;
     struct epoll_event* events = NULL;
     struct epoll_event event;
@@ -94,6 +93,9 @@ void h2x_do_client(struct h2x_options* options)
 
     struct h2x_buffer stdin_buffer;
     h2x_buffer_init(STDIN_BUFFER_SIZE, &stdin_buffer);
+
+    struct h2x_connection_manager* manager = create_connection_manager(options);
+    events = calloc(CLIENT_EVENT_COUNT, sizeof(struct epoll_event));
 
     if(h2x_make_socket_nonblocking(STDIN_FILENO))
     {
@@ -117,10 +119,6 @@ void h2x_do_client(struct h2x_options* options)
         fprintf(stderr, "Unable to register stdin with epoll instance\n");
         goto CLEANUP;
     }
-
-    events = calloc(CLIENT_EVENT_COUNT, sizeof(struct epoll_event));
-
-    struct h2x_connection_manager* manager = create_connection_manager(options);
 
     g_quit = false;
     while(!g_quit)

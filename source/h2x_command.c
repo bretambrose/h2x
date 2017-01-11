@@ -166,7 +166,7 @@ static void split_args(struct command_def* command, char* command_args, int* arg
     }
 }
 
-static void process_command_line(struct command_def* command_definitions, int command_count, char *command, char *command_args, void* context)
+static void process_command_line(struct command_def* command_definitions, uint32_t command_count, char *command, char *command_args, void* context)
 {
     for(uint32_t i = 0; i < command_count; ++i)
     {
@@ -204,7 +204,7 @@ static void process_command_line(struct command_def* command_definitions, int co
     fprintf(stderr, "Unknown command: %s\n", command);
 }
 
-void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count, void* context)
+void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, uint32_t command_count, void* context)
 {
     while(1)
     {
@@ -221,3 +221,4 @@ void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_
         command_pullup(buffer, command_length);
     }
 }
+

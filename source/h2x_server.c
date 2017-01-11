@@ -120,6 +120,9 @@ void h2x_do_server(struct h2x_options* options)
     struct h2x_buffer stdin_buffer;
     h2x_buffer_init(STDIN_BUFFER_SIZE, &stdin_buffer);
 
+    events = calloc(LISTENER_EVENT_COUNT, sizeof(struct epoll_event));
+    struct h2x_connection_manager* manager = create_connection_manager(options);
+
     listener_fd = create_listener_socket(options);
     if(listener_fd < 0)
     {
@@ -159,10 +162,6 @@ void h2x_do_server(struct h2x_options* options)
         fprintf(stderr, "Unable to register stdin with epoll instance\n");
         goto CLEANUP;
     }
-
-    events = calloc(LISTENER_EVENT_COUNT, sizeof(struct epoll_event));
-
-    struct h2x_connection_manager* manager = create_connection_manager(options);
 
     g_quit = false;
     while(!g_quit)

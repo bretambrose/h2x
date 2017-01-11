@@ -24,6 +24,9 @@ struct h2x_thread {
 
     pthread_mutex_t* finished_connection_lock;  // lock for global shared state between all processing threads and connection manager
     struct h2x_connection_node** finished_connections;
+
+    struct h2x_connection* pending_read_chain;
+    struct h2x_connection* pending_write_chain;
 };
 
 struct h2x_thread_node {

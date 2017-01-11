@@ -93,7 +93,8 @@ typedef struct {
 } h2x_option_parser;
 
 h2x_option_parser option_parsers[] = {
-  { "--mode", 1, parse_h2x_mode, "(required) what mode to run the program in [server|client]" }, 
+  { "--mode", 1, parse_h2x_mode, "(required) what mode to run the program in [server|client]" },
+  { "--security", 1, parse_h2x_security_protocol, "what connection security protocol to use [none|tls]" },
   { "--port", 1, parse_h2x_port, "(server required) what port to listen for connections on" },
   { "--threads", 1, parse_h2x_threads, "(server) number of threads to process connections on; defaults to 1" },
   { "--conn", 1, parse_h2x_conn, "(server) maximum number of connections per thread; defaults to 1000" }
@@ -117,7 +118,7 @@ int h2x_parse_options(int argc, char** argv, struct h2x_options* options)
       {
         found_handler = true;
         uint32_t arg_count = option_parsers[i].argument_count;
-        if(arg_index + arg_count >= argc || (*option_parsers[i].parse_function)(argv + arg_index, options) != 0)
+        if(arg_index + arg_count >= (uint32_t)argc || (*option_parsers[i].parse_function)(argv + arg_index, options) != 0)
         {
           return -1;  
         }

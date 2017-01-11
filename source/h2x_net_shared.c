@@ -73,7 +73,7 @@ static void cleanup_connection_table_entry(void *data, void* context)
     struct h2x_connection* connection = data;
     struct cleanup_context* clean_context = context;
 
-    int ret_val = epoll_ctl(clean_context->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
+    epoll_ctl(clean_context->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
 
     struct h2x_connection_node** node_ptr = clean_context->closed_connections_ptr;
 
@@ -222,7 +222,7 @@ void *h2x_processing_thread_function(void * arg)
             {
                 bool should_close_connection = false;
                 struct h2x_connection* connection = (struct h2x_connection*)malloc(sizeof(struct h2x_connection));
-                h2x_connection_init(connection, socket->fd, self->options->mode);
+                h2x_connection_init(connection, self, socket->fd, self->options->mode);
 
                 if(!done)
                 {

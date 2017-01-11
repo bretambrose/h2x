@@ -3,6 +3,7 @@
 #define H2X_COMMAND_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 struct h2x_buffer;
 
@@ -14,6 +15,6 @@ struct command_def {
     char* help;
 };
 
-void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, int command_count, void* context);
+void h2x_command_process(struct h2x_buffer* buffer, struct command_def* command_definitions, uint32_t command_count, void* context);
 
 #endif //H2X_COMMAND_H

@@ -3,18 +3,9 @@
 #ifndef H2X_OPTIONS_H
 #define H2X_OPTIONS_H
 
+#include <h2x_enum_types.h>
+
 #include <stdint.h>
-
-typedef enum {
-    H2X_MODE_NONE,
-    H2X_MODE_CLIENT,
-    H2X_MODE_SERVER
-} h2x_mode;
-
-typedef enum {
-    H2X_SECURITY_NONE,
-    H2X_SECURITY_TLS
-} h2x_security_protocol_type;
 
 struct h2x_options {
     h2x_mode mode;

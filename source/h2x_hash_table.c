@@ -37,6 +37,8 @@ bool h2x_hash_table_add(struct h2x_hash_table* table, void* data)
     *entry_ptr = malloc(sizeof(struct h2x_hash_entry));
     (*entry_ptr)->data = data;
     (*entry_ptr)->next = NULL;
+
+    return true;
 }
 
 bool h2x_hash_table_remove(struct h2x_hash_table* table, uint32_t key)

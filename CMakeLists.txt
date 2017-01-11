@@ -23,6 +23,6 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/source ${S2N_INCLUDE_PATH})
 
 add_executable(h2x ${H2X_SOURCE} source/h2x_frame.h source/h2x_stream.h)
 
-target_compile_options(h2x PUBLIC -std=gnu99 -g)
+target_compile_options(h2x PRIVATE -std=gnu99 -g -Wall -Werror -pedantic -Wextra -Wno-unused-parameter -Wno-gnu-statement-expression)
  
 target_link_libraries(h2x ${S2N_LIB_PATH} pthread crypto rt)
