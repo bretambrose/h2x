@@ -3,6 +3,18 @@
 #include <stddef.h>
 #include <malloc.h>
 
+void h2x_header_init(struct h2x_header* header, char* name, char* value)
+{
+    header->name = name;
+    header->value = value;
+}
+
+void h2x_header_cleanup(struct h2x_header* header)
+{
+    free(header->name);
+    free(header->value);
+}
+
 void h2x_header_list_init(struct h2x_header_list* list)
 {
     list->head = list->cur = list->tail = NULL;
@@ -15,25 +27,14 @@ void h2x_header_list_cleanup(struct h2x_header_list* list)
     while(iter)
     {
         struct h2x_header_list_node* next = iter->next;
-        if(iter->header && iter->header->name)
-        {
-            free(iter->header->name);
-        }
-        if(iter->header && iter->header->value)
-        {
-            free(iter->header->value);
-        }
-        if(iter->header)
-        {
-            free(iter->header);
-        }
+        h2x_header_cleanup(&iter->header);
 
         free(iter);
         iter = next;
     }
 }
 
-void h2x_header_list_append(struct h2x_header_list* list, struct h2x_header* header)
+void h2x_header_list_append(struct h2x_header_list* list, struct h2x_header header)
 {
     struct h2x_header_list_node* new_node = (struct h2x_header_list_node*)malloc(sizeof(struct h2x_header_list_node));
     new_node->next = NULL;
@@ -54,7 +55,7 @@ struct h2x_header* h2x_header_next(struct h2x_header_list* list)
 {
     struct h2x_header_list_node* temp = list->cur;
     list->cur = list->cur->next;
-    return temp->header;
+    return &temp->header;
 }
 
 void h2x_header_reset_iter(struct h2x_header_list* list)
