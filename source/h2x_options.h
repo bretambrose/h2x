@@ -16,9 +16,16 @@ struct h2x_options {
     uint32_t connections_per_thread;
     bool non_interactive;
     bool protocol_debug;
+
+    h2x_log_level log_level;
+    h2x_log_dest log_dest;
+    char *log_filename;
+    bool sync_logging;
 } h2x_options;
 
-int h2x_parse_options(int argc, char** argv, struct h2x_options* options);
+int h2x_options_init(struct h2x_options* options, int argc, char** argv);
+void h2x_options_cleanup(struct h2x_options* options);
+
 void h2x_print_usage(char *program_name);
 
 #endif // H2X_OPTIONS_H

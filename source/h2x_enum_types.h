@@ -69,4 +69,24 @@ typedef enum {
     H2X_ICT_COUNT
 } h2x_intrusive_chain_type;
 
+typedef enum {
+    H2X_LOG_LEVEL_OFF = 0,
+    H2X_LOG_LEVEL_FATAL = 1,
+    H2X_LOG_LEVEL_ERROR = 2,
+    H2X_LOG_LEVEL_WARN = 3,
+    H2X_LOG_LEVEL_INFO = 4,
+    H2X_LOG_LEVEL_DEBUG = 5,
+    H2X_LOG_LEVEL_TRACE = 6
+} h2x_log_level;
+
+typedef enum {
+    H2X_LOG_DEST_NONE,
+    H2X_LOG_DEST_STDERR,
+    H2X_LOG_DEST_FILE
+} h2x_log_dest;
+
+char* h2x_log_level_to_string(h2x_log_level log_level);
+h2x_log_level string_to_h2x_log_level(char* log_level_string);
+h2x_log_dest string_to_h2x_log_dest(char* log_dest_string);
+
 #endif // H2X_ENUM_TYPES_H

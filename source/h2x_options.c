@@ -100,6 +100,34 @@ static int parse_h2x_debug_protocol(char** args, struct h2x_options* options)
     return 0;
 }
 
+static int parse_h2x_log_level(char** args, struct h2x_options* options)
+{
+    options->log_level = string_to_h2x_log_level(args[1]);
+
+    return 0;
+}
+
+static int parse_h2x_log_dest(char** args, struct h2x_options* options)
+{
+    options->log_dest = string_to_h2x_log_dest(args[1]);
+
+    return 0;
+}
+
+static int parse_h2x_log_filename(char** args, struct h2x_options* options)
+{
+    options->log_filename = strdup(args[1]);
+
+    return 0;
+}
+
+static int parse_h2x_sync_logging(char** args, struct h2x_options* options)
+{
+    options->sync_logging = true;
+
+    return 0;
+}
+
 typedef struct {
     char* option_name;
     uint32_t argument_count;
@@ -114,12 +142,16 @@ h2x_option_parser option_parsers[] = {
     { "--threads", 1, parse_h2x_threads, "(server) number of threads to process connections on; defaults to 1" },
     { "--conn", 1, parse_h2x_conn, "(server) maximum number of connections per thread; defaults to 1000" },
     { "--debug_protocol", 0, parse_h2x_debug_protocol, "enables all protocol debug (pd) commands" },
-    { "--nointeract", 0, parse_h2x_nointeract, "(server) disable interactive command input; useful for debugging" }
+    { "--nointeract", 0, parse_h2x_nointeract, "(server) disable interactive command input; useful for debugging" },
+    { "--log_level", 1, parse_h2x_log_level, "sets the logging level for the process [Off | Fatal | Error | Warn | Info | Debug | Trace]" },
+    { "--log_dest", 1, parse_h2x_log_dest, "sets the logging destination for the process [None | Stderr | File]" },
+    { "--log_filename", 1, parse_h2x_log_filename, "when logging to a file, sets the filename (defaults to h2x.log)" },
+    { "--sync_logging", 0, parse_h2x_sync_logging, "synchronize all access to the log destination (slow)" }
 };
 
 #define H2X_OPTION_COUNT (sizeof(option_parsers) / sizeof(h2x_option_parser))
 
-int h2x_parse_options(int argc, char** argv, struct h2x_options* options)
+int h2x_options_init(struct h2x_options* options, int argc, char** argv)
 {
     memset(options, 0, sizeof(h2x_options));
     intialize_options_defaults(options);
@@ -153,6 +185,14 @@ int h2x_parse_options(int argc, char** argv, struct h2x_options* options)
     }
 
     return 0;
+}
+
+void h2x_options_cleanup(struct h2x_options* options)
+{
+    if(options->log_filename)
+    {
+        free(options->log_filename);
+    }
 }
 
 void h2x_print_usage(char *program_name)

@@ -75,8 +75,6 @@ static void cleanup_connection_table_entry(void *data, void* context)
 
 static void release_closed_connections(struct h2x_thread* thread)
 {
-    fprintf(stderr, "Checking for closed connections\n");
-
     if(!thread->intrusive_chains[H2X_ICT_PENDING_CLOSE])
     {
         return;
@@ -111,6 +109,8 @@ static void release_closed_connections(struct h2x_thread* thread)
     *(thread->finished_connections) = last_connection;
 
     pthread_mutex_unlock(thread->finished_connection_lock);
+
+    thread->intrusive_chains[H2X_ICT_PENDING_CLOSE] = NULL;
 }
 
 void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_event* events, int event_count)
