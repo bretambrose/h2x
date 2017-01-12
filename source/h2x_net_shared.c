@@ -3,6 +3,7 @@
 #include <h2x_stream.h>
 #include <h2x_connection.h>
 #include <h2x_hash_table.h>
+#include <h2x_log.h>
 #include <h2x_options.h>
 #include <h2x_thread.h>
 
@@ -80,14 +81,12 @@ static void release_closed_connections(struct h2x_thread* thread)
         return;
     }
 
-    fprintf(stderr, "At least one closed connection exists!\n");
-
     // remove all the finished connections from our epoll instance
     struct h2x_connection *connection = thread->intrusive_chains[H2X_ICT_PENDING_CLOSE];
     while(connection)
     {
-        fprintf(stderr, "Removed connection %d from epoll\n", connection->fd);
         epoll_ctl(thread->epoll_fd, EPOLL_CTL_DEL, connection->fd, NULL);
+        H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Removed connection %d from epoll", connection->fd);
         connection = connection->intrusive_chains[H2X_ICT_PENDING_CLOSE];
     }
 
@@ -103,7 +102,11 @@ static void release_closed_connections(struct h2x_thread* thread)
     assert(last_connection->intrusive_chains[H2X_ICT_PENDING_READ] == NULL);
     assert(last_connection->intrusive_chains[H2X_ICT_PENDING_WRITE] == NULL);
 
-    pthread_mutex_lock(thread->finished_connection_lock);
+    if(pthread_mutex_lock(thread->finished_connection_lock))
+    {
+        H2X_LOG(H2X_LOG_LEVEL_ERROR, "Processing thread failed to acquire finished connection lock");
+        return;
+    }
 
     last_connection->intrusive_chains[H2X_ICT_PENDING_CLOSE] = *(thread->finished_connections);
     *(thread->finished_connections) = last_connection;
@@ -133,7 +136,7 @@ void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_eve
         // connected or error/failure
         connection->socket_state.has_connected = true;
 
-        fprintf(stderr, "Received epoll event on fd %d with mask %d\n", connection->fd, event_mask);
+        H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Received epoll event on fd %d with mask %d", connection->fd, event_mask);
 
         if(event_mask & (EPOLLERR | EPOLLHUP))
         {
@@ -144,6 +147,8 @@ void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_eve
             connection->socket_state.io_error = errno;
             connection->socket_state.has_remote_hungup = true;
 
+            H2X_LOG(H2X_LOG_LEVEL_INFO, "Connection %d errored with error %d", connection->fd, errno);
+
             h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
             continue;
         }
@@ -152,6 +157,7 @@ void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_eve
         {
             // go to read-only mode
             connection->socket_state.has_remote_hungup = true;
+            H2X_LOG(H2X_LOG_LEVEL_INFO, "Connection %d received remote hangup", connection->fd);
         }
 
         if(event_mask & (EPOLLIN | EPOLLPRI))
@@ -180,26 +186,30 @@ void process_pending_read_chain(struct h2x_thread* thread)
         struct h2x_connection* connection = *read_connection_ptr;
         bool should_close_connection = false;
 
+        H2X_LOG(H2X_LOG_LEVEL_TRACE, "Connection %d attempting read", connection->fd);
         ssize_t count = read(connection->fd, read_buffer, READ_BUFFER_SIZE);
         if(count == -1)
         {
             if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
             {
+                H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d hit unexpected error %d during read", connection->fd, (int) errno);
                 connection->socket_state.io_error = errno;
                 should_close_connection = true;
+            }
+            else
+            {
+                H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d out of data for read", connection->fd);
             }
         }
         else if(count == 0)
         {
+            H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d appears to be closed by remote peer with no further data", connection->fd);
             connection->socket_state.has_remote_hungup = true;
             should_close_connection = true;
         }
         else
         {
-            for(uint32_t i = 0; i < count; ++i)
-            {
-                fprintf(stderr, "Received %x\n", (int)read_buffer[i]);
-            }
+            H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Received %u bytes on connection %d", (uint32_t) count, connection->fd);
             h2x_connection_on_data_received(connection, read_buffer, count);
             connection->bytes_read += count;
         }
@@ -225,8 +235,6 @@ void process_pending_read_chain(struct h2x_thread* thread)
     }
 }
 
-char *test_string = "Hello!";
-
 void process_pending_write_chain(struct h2x_thread* thread)
 {
     // one round of writes
@@ -238,15 +246,8 @@ void process_pending_write_chain(struct h2x_thread* thread)
         bool is_write_finished = false;
         bool should_attempt_to_write = !connection->socket_state.has_remote_hungup && connection->socket_state.has_connected;
 
-        // Debug
-        if(connection->bytes_written == 0 && !connection->current_outbound_frame)
-        {
-            struct h2x_frame *frame = malloc(sizeof(struct h2x_frame));
-            frame->size = strlen(test_string);
-            frame->raw_data = (uint8_t *)strdup(test_string);
-
-            connection->current_outbound_frame = frame;
-        }
+        H2X_LOG(H2X_LOG_LEVEL_TRACE, "Connection %d considering write (remote_hungup=%d, has_connected=%d)", connection->fd,
+                (int)connection->socket_state.has_remote_hungup, (int)connection->socket_state.has_connected);
 
         h2x_connection_pump_outbound_frame(connection);
         if(should_attempt_to_write && connection->current_outbound_frame)
@@ -254,11 +255,14 @@ void process_pending_write_chain(struct h2x_thread* thread)
             uint32_t write_size = connection->current_outbound_frame->size - connection->current_outbound_frame_read_position;
             assert(write_size > 0);
 
+            H2X_LOG(H2X_LOG_LEVEL_TRACE, "Connection %d has outbound data (size %u) and is able to write", connection->fd, write_size);
+
             ssize_t count = write(connection->fd, connection->current_outbound_frame->raw_data, write_size);
 
             is_write_finished = count == write_size;
             if(count >= 0)
             {
+                H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d wrote %u bytes", connection->fd, (uint32_t)count);
                 connection->current_outbound_frame_read_position += count;
                 connection->bytes_written += count;
             }
@@ -266,8 +270,13 @@ void process_pending_write_chain(struct h2x_thread* thread)
             {
                 if(errno != EAGAIN && errno != EWOULDBLOCK && errno != EINTR)
                 {
+                    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d hit unexpected error %d during write", connection->fd, (int) errno);
                     should_close_connection = true;
                     connection->socket_state.io_error = errno;
+                }
+                else
+                {
+                    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d out of space to write", connection->fd);
                 }
             }
         }
@@ -302,7 +311,7 @@ void *h2x_processing_thread_function(void * arg)
     int epoll_fd = epoll_create1(0);
     if(epoll_fd == -1)
     {
-        fprintf(stderr, "Unable to create epoll instance\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create epoll instance");
         return NULL;
     }
 
@@ -323,44 +332,35 @@ void *h2x_processing_thread_function(void * arg)
         {
             process_pending_read_chain(self);
             process_pending_write_chain(self);
-            fprintf(stderr, "did a read/write pass\n");
+            H2X_LOG(H2X_LOG_LEVEL_TRACE, "Finished a single read/write pass");
         }
 
-        // begin read from shared state
-        if(pthread_mutex_lock(&self->state_lock))
-        {
-            continue;
-        }
-
-        done = self->should_quit;
-        struct h2x_socket* new_connections = self->new_connections;
-        self->new_connections = NULL;
-        pthread_mutex_unlock(&self->state_lock);
-        // end read from shared state
+        // optionally combine these two lock/unlock pairs into one
+        struct h2x_connection* new_connections = NULL;
+        h2x_thread_poll_quit_state(self, &done);
+        h2x_thread_poll_new_connections(self, &new_connections);
 
         if(new_connections)
         {
-            struct h2x_socket* socket = new_connections;
-            while(socket)
+            struct h2x_connection* connection = new_connections;
+            while(connection)
             {
                 bool should_close_connection = false;
-                struct h2x_connection* connection = (struct h2x_connection*)malloc(sizeof(struct h2x_connection));
-                h2x_connection_init(connection, self, socket->fd, self->options->mode);
-
                 if(!done)
                 {
                     event.data.ptr = connection;
                     // don't need to explicitly subscribe to EPOLLERR and EPOLLHUP
                     event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
 
-                    ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, socket->fd, &event);
+                    ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connection->fd, &event);
                     if (ret_val == -1)
                     {
-                        fprintf(stderr, "Unable to register new socket with epoll instance\n");
+                        H2X_LOG(H2X_LOG_LEVEL_INFO, "Unable to register connection %d with thread %u epoll instance", connection->fd, self->thread_id);
                         should_close_connection = true;
                     }
                     else
                     {
+                        H2X_LOG(H2X_LOG_LEVEL_INFO, "Added connection %d to thread %u epoll instance", connection->fd, self->thread_id);
                         h2x_hash_table_add(connection_table, connection);
                     }
                 }
@@ -374,9 +374,9 @@ void *h2x_processing_thread_function(void * arg)
                     h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
                 }
 
-                struct h2x_socket* old_socket = socket;
-                socket = socket->next;
-                free(old_socket);
+                struct h2x_connection* next_connection = connection->next_new_connection;
+                connection->next_new_connection = NULL;
+                connection = next_connection;
             }
         }
 

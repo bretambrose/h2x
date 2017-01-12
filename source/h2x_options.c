@@ -14,6 +14,10 @@ static void intialize_options_defaults(struct h2x_options* options)
     options->security_protocol = H2X_SECURITY_NONE;
     options->non_interactive = false;
     options->protocol_debug = false;
+    options->log_level = H2X_LOG_LEVEL_DEBUG;
+    options->log_dest = H2X_LOG_DEST_STDERR;
+    options->log_filename = NULL;
+    options->sync_logging = true;
 }
 
 static int parse_h2x_mode(char** args, struct h2x_options* options)

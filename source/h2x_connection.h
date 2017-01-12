@@ -13,6 +13,7 @@
 #define MAX_RECV_FRAME_SIZE 0x4000
 
 struct h2x_header_list;
+struct h2x_stream;
 struct h2x_thread;
 
 struct h2x_socket_state {
@@ -45,6 +46,7 @@ struct h2x_connection {
     uint64_t bytes_written;
     uint64_t bytes_read;
 
+    struct h2x_connection* next_new_connection;
 
     /*
      Intrusive lists that chain together connections that require read and/or write work.
