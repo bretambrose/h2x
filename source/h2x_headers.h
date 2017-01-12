@@ -7,9 +7,12 @@ struct h2x_header
     char* value;
 };
 
+void h2x_header_init(struct h2x_header* header, char* name, char* value);
+void h2x_header_cleanup(struct h2x_header* header);
+
 struct h2x_header_list_node
 {
-    struct h2x_header* header;
+    struct h2x_header header;
     struct h2x_header_list_node* next;
 };
 
@@ -22,7 +25,7 @@ struct h2x_header_list
 
 void h2x_header_list_init(struct h2x_header_list* list);
 void h2x_header_list_cleanup(struct h2x_header_list* list);
-void h2x_header_list_append(struct h2x_header_list* list, struct h2x_header* header);
+void h2x_header_list_append(struct h2x_header_list* list, struct h2x_header header);
 struct h2x_header* h2x_header_next(struct h2x_header_list* list);
 void h2x_header_reset_iter(struct h2x_header_list* list);
 

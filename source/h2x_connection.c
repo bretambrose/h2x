@@ -94,6 +94,8 @@ void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *o
     connection->on_stream_headers_received = NULL;
     connection->on_stream_body_received = NULL;
     connection->on_stream_error = NULL;
+    connection->on_stream_data_needed = NULL;
+
     connection->user_data = NULL;
     h2x_frame_list_init(&connection->outgoing_frames);
 

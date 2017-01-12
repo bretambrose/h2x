@@ -6,6 +6,8 @@
 #include <h2x_enum_types.h>
 #include <h2x_frame.h>
 #include <h2x_hash_table.h>
+#include <h2x_headers.h>
+#include <h2x_request.h>
 
 //per rfc7540 section 4.2
 #define MAX_RECV_FRAME_SIZE 0x4000
@@ -69,6 +71,8 @@ struct h2x_connection {
     void(*on_stream_headers_received)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t stream_id, void*);
     void(*on_stream_body_received)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool lastFrame, void*);
     void(*on_stream_error)(struct h2x_connection*, h2x_connection_error, uint32_t, void*);
+    bool(*on_stream_data_needed)(struct h2x_connection*, uint32_t, uint8_t*, uint32_t, uint32_t*, void*);
+
 };
 
 void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* owner, int fd, h2x_mode mode);
@@ -79,12 +83,18 @@ void h2x_connection_set_stream_headers_receieved_callback(struct h2x_connection*
                                                           void(*callback)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t, void*));
 void h2x_connection_set_stream_body_receieved_callback(struct h2x_connection* connection,
                                                        void(*callback)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool finalFrame, void*));
+void h2x_connection_set_stream_data_needed_callback(struct h2x_connection* connection,
+                                              bool(*on_stream_data_needed)(struct h2x_connection*, uint32_t, uint8_t*, uint32_t, uint32_t*, void*));
+
 void h2x_connection_set_stream_error_callback(struct h2x_connection* connection,
                                               void(*callback)(struct h2x_connection*, h2x_connection_error, uint32_t, void*));
 
-void h2x_connection_set_user_data(struct h2x_connection* connection, void*);
-
 void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame* frame);
+
+void h2x_queue_new_request(struct h2x_connection* connection, struct h2x_request);
+void h2x_queue_push_headers(struct h2x_connection* connection, struct h2x_header_list*);
+void h2x_queue_push_data_segment(struct h2x_connection* connection, uint32_t* data, uint32_t size, bool lastFrame);
+
 uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection);
 
 struct h2x_frame* h2x_connection_pop_frame(struct h2x_connection* connection);
