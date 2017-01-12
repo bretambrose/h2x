@@ -3,13 +3,19 @@
 #include <assert.h>
 #include <stdlib.h>
 
-struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *))
+struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *), uint32_t thread_id)
 {
     struct h2x_thread* thread = malloc(sizeof(struct h2x_thread));
 
     thread->options = options;
+    thread->thread_id = thread_id;
+    thread->connection_count = 0;
+    thread->epoll_fd = 0;
     thread->new_connections = NULL;
     thread->should_quit = false;
+    thread->finished_connection_lock = NULL;
+    thread->finished_connections = NULL;
+
     for(uint32_t i = 0; i < H2X_ICT_COUNT; ++i)
     {
         thread->intrusive_chains[i] = NULL;
@@ -74,6 +80,11 @@ void h2x_thread_cleanup(struct h2x_thread* thread)
 
 int h2x_thread_add_connection(struct h2x_thread* thread, int fd)
 {
+    if (thread == NULL)
+    {
+        return -1;
+    }
+
     struct h2x_socket* new_connection = malloc(sizeof(struct h2x_socket));
     new_connection->fd = fd;
 

@@ -4,7 +4,16 @@
 
 #include <assert.h>
 #include <memory.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+void h2x_socket_state_init(struct h2x_socket_state* socket_state)
+{
+    socket_state->io_error = 0;
+    socket_state->last_event_mask = 0;
+    socket_state->has_connected = false;
+    socket_state->has_remote_hungup = false;
+}
 
 
 #define min(a, b) \
@@ -68,11 +77,14 @@ void stream_error(struct h2x_stream *stream, struct h2x_frame *frame, h2x_connec
 void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *owner, int fd, h2x_mode mode) {
     connection->owner = owner;
     connection->fd = fd;
+    h2x_socket_state_init(&connection->socket_state);
     connection->mode = mode;
     connection->current_frame_size = 0;
     connection->state = H2X_NOT_ON_FRAME;
     connection->current_outbound_frame = NULL;
     connection->current_outbound_frame_read_position = 0;
+    connection->bytes_written = 0;
+    connection->bytes_read = 0;
 
     for (uint32_t i = 0; i < H2X_ICT_COUNT; ++i) {
         connection->intrusive_chains[i] = NULL;
@@ -216,7 +228,9 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection *connection, h2
         return;
     }
 
-    struct h2x_thread *thread = connection->owner;
+    fprintf(stderr, "Adding connection %d to chain %d\n", connection->fd, (int) chain);
+
+    struct h2x_thread* thread = connection->owner;
 
     assert(connection->intrusive_chains[chain] == NULL);
     assert(!connection->in_intrusive_chain[chain]);
@@ -232,9 +246,12 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection *connection, h2
     thread->intrusive_chains[chain] = connection->intrusive_chains[chain];
 }
 
-void
-h2x_connection_remove_from_intrusive_chain(struct h2x_connection **connection_ref, h2x_intrusive_chain_type chain) {
-    struct h2x_connection *connection = *connection_ref;
+void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain)
+{
+    fprintf(stderr, "Removing connection %d from chain %d\n", (*connection_ref)->fd, (int) chain);
+
+    struct h2x_connection* connection = *connection_ref;
+
     assert(connection->in_intrusive_chain[chain]);
 
     *connection_ref = (*connection_ref)->intrusive_chains[chain];
@@ -243,26 +260,8 @@ h2x_connection_remove_from_intrusive_chain(struct h2x_connection **connection_re
     connection->intrusive_chains[chain] = NULL;
 }
 
-bool h2x_connection_validate(struct h2x_connection *connection) {
-    // try and determine if succesfully established
-    /*
-     * TODO
-    if(connection->??)
-    {
-        ??;
-    }*/
-    return 0;
-}
-
-/*
-static bool has_outbound_data(struct h2x_connection* connection)
+void h2x_connection_on_new_outbound_data(struct h2x_connection* connection)
 {
-    // TODO
-    return connection->current_outbound_frame != NULL;// || ??
-}
-*/
-
-void h2x_connection_on_new_outbound_data(struct h2x_connection *connection) {
     h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_WRITE);
 }
 

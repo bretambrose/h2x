@@ -29,7 +29,11 @@ static int handle_quit_command(int argc, char** argv, void* context)
 
 
 struct command_def server_commands[] = {
-    { "quit", 0, false, handle_quit_command, "shuts down the server" }
+    { "quit", 0, false, handle_quit_command, "shuts down the server" },
+    { "list_threads", 0, false, h2x_command_handle_list_threads, "lists all connection manager threads" },
+    { "list_connections", 1, false, h2x_command_handle_list_connections, "[thread_id] - lists all connections within a thread" },
+    { "describe_thread", 1, false, h2x_command_handle_describe_thread, "[thread_id] - dumps detailed information about a thread" },
+    { "describe_connection", 1, false, h2x_command_handle_describe_connection, "[connection_id] [thread_id] - dumps details infromation about a connection" }
 };
 
 #define SERVER_COMMAND_COUNT (sizeof(server_commands) / sizeof(struct command_def))
@@ -154,13 +158,16 @@ void h2x_do_server(struct h2x_options* options)
     }
 
     /* Add stdin for server commands */
-    event.data.fd = STDIN_FILENO;
-    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
-    ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &event);
-    if(ret_val == -1)
+    if(!options->non_interactive)
     {
-        fprintf(stderr, "Unable to register stdin with epoll instance\n");
-        goto CLEANUP;
+        event.data.fd = STDIN_FILENO;
+        event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR;
+        ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &event);
+        if(ret_val == -1)
+        {
+            fprintf(stderr, "Unable to register stdin with epoll instance\n");
+            goto CLEANUP;
+        }
     }
 
     g_quit = false;

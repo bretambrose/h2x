@@ -14,8 +14,9 @@ int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connecti
 {
     connection_manager->options = options;
     connection_manager->finished_connections = NULL;
+    connection_manager->next_thread_id = 1;
 
-    if(!pthread_mutex_init(&connection_manager->finished_connection_lock, NULL))
+    if(pthread_mutex_init(&connection_manager->finished_connection_lock, NULL))
     {
         return -1;
     }
@@ -25,7 +26,7 @@ int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connecti
 
     for(i = 0; i < options->threads; ++i)
     {
-        struct h2x_thread* thread = h2x_thread_new(options, h2x_processing_thread_function);
+        struct h2x_thread* thread = h2x_thread_new(options, h2x_processing_thread_function, connection_manager->next_thread_id++);
         h2x_thread_set_finished_connection_channel(thread, &connection_manager->finished_connection_lock, &connection_manager->finished_connections);
 
         *thread_node = malloc(sizeof(struct h2x_thread_node));
@@ -113,19 +114,25 @@ void h2x_connection_manager_add_connection(struct h2x_connection_manager* connec
     struct h2x_thread_node* thread_node = connection_manager->processing_threads;
     while(thread_node)
     {
-        uint32_t thread_connection_count = thread_node->thread->connection_count;
-        if(thread_connection_count <= lowest_count)
+        struct h2x_thread* thread = thread_node->thread;
+        uint32_t thread_connection_count = thread->connection_count;
+        if(thread_connection_count <= lowest_count && thread_connection_count < thread->options->connections_per_thread)
         {
-            add_thread = thread_node->thread;
+            add_thread = thread;
             lowest_count = thread_connection_count;
         }
 
         thread_node = thread_node->next;
     }
 
-    if(!add_thread || h2x_thread_add_connection(add_thread, fd))
+    if(add_thread == NULL)
     {
-        fprintf(stderr, "Something went very wrong in h2x_connection_manager_add_connection\n");
+        fprintf(stderr, "No available threads with room for a connection.\n");
+        close(fd);
+    }
+    else if(h2x_thread_add_connection(add_thread, fd))
+    {
+        fprintf(stderr, "Something went very wrong in h2x_thread_add_connection\n");
         close(fd);
     }
 }
@@ -134,7 +141,7 @@ void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manage
 {
     struct h2x_connection* finished_connections = NULL;
 
-    if(!pthread_mutex_lock(&manager->finished_connection_lock))
+    if(pthread_mutex_lock(&manager->finished_connection_lock))
     {
         fprintf(stderr, "Unable to lock connection manager finished connections\n");
         return;
@@ -158,3 +165,15 @@ void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manage
     }
 }
 
+void h2x_connection_manager_list_threads(struct h2x_connection_manager* manager)
+{
+    struct h2x_thread_node* thread_node = manager->processing_threads;
+    while(thread_node)
+    {
+        struct h2x_thread* thread = thread_node->thread;
+
+        fprintf(stderr, "thread %u - %u connections\n", thread->thread_id, thread->connection_count);
+
+        thread_node = thread_node->next;
+    }
+}
