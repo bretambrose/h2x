@@ -248,7 +248,7 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
     h2x_connection_push_frame_to_stream(connection, frame);
 }
 
-void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint32_t* data, uint32_t size, bool lastFrame)
+void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint8_t* data, uint32_t size, bool lastFrame)
 {
     struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
     h2x_frame_init(frame);
@@ -261,7 +261,7 @@ void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id
 
     while(data_written_size < size)
     {
-        uint32_t to_write = min(size, MAX_RECV_FRAME_SIZE - FRAME_HEADER_LENGTH);
+        uint32_t to_write = min(size, (uint32_t)(MAX_RECV_FRAME_SIZE - FRAME_HEADER_LENGTH));
         memcpy(frame->raw_data + FRAME_HEADER_LENGTH, data, to_write);
         h2x_frame_set_length(frame, to_write);
         frame->size = to_write + FRAME_HEADER_LENGTH;
