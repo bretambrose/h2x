@@ -2,6 +2,7 @@
 
 #include <h2x_connection.h>
 #include <h2x_log.h>
+#include <h2x_request.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -26,7 +27,7 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
         thread->intrusive_chains[i] = NULL;
     }
 
-    if(pthread_mutex_init(&thread->new_connections_lock, NULL))
+    if(pthread_mutex_init(&thread->new_data_lock, NULL))
     {
         H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to initialize thread %u new connections mutex, errno = %d", thread_id, (int) errno);
         goto CLEANUP_THREAD;
@@ -66,7 +67,7 @@ CLEANUP_MUTEX2:
     pthread_mutex_destroy(&thread->quit_lock);
 
 CLEANUP_MUTEX1:
-    pthread_mutex_destroy(&thread->new_connections_lock);
+    pthread_mutex_destroy(&thread->new_data_lock);
 
 CLEANUP_THREAD:
     free(thread);
@@ -94,7 +95,7 @@ void h2x_thread_cleanup(struct h2x_thread* thread)
     assert(thread->new_connections == NULL);
 
     pthread_mutex_destroy(&thread->quit_lock);
-    pthread_mutex_destroy(&thread->new_connections_lock);
+    pthread_mutex_destroy(&thread->new_data_lock);
 
     free(thread);
 }
@@ -106,7 +107,7 @@ int h2x_thread_add_connection(struct h2x_thread* thread, struct h2x_connection *
         return -1;
     }
 
-    if(pthread_mutex_lock(&thread->new_connections_lock))
+    if(pthread_mutex_lock(&thread->new_data_lock))
     {
         H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to lock thread %u state in order to add connection %d, errno = %d", thread->thread_id, connection->fd, (int) errno);
         return -1;
@@ -118,15 +119,15 @@ int h2x_thread_add_connection(struct h2x_thread* thread, struct h2x_connection *
     thread->new_connections = connection;
     ++thread->connection_count;
 
-    pthread_mutex_unlock(&thread->new_connections_lock);
+    pthread_mutex_unlock(&thread->new_data_lock);
     return 0;
 }
 
-int h2x_thread_poll_new_connections(struct h2x_thread* thread, struct h2x_connection** new_connections)
+int h2x_thread_poll_requests_and_connections(struct h2x_thread* thread, struct h2x_connection** new_connections)
 {
     *new_connections = NULL;
 
-    if(pthread_mutex_lock(&thread->new_connections_lock))
+    if(pthread_mutex_lock(&thread->new_data_lock))
     {
         H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to lock thread %u state in order to poll new connections, errno = %d", thread->thread_id, (int) errno);
         return -1;
@@ -135,7 +136,10 @@ int h2x_thread_poll_new_connections(struct h2x_thread* thread, struct h2x_connec
     *new_connections = thread->new_connections;
     thread->new_connections = NULL;
 
-    pthread_mutex_unlock(&thread->new_connections_lock);
+    *new_requests = thread->new_requests;
+    thread->new_requests = NULL;
+
+    pthread_mutex_unlock(&thread->new_data_lock);
     return 0;
 }
 
@@ -150,5 +154,27 @@ int h2x_thread_poll_quit_state(struct h2x_thread* thread, bool* quit_state)
     *quit_state = thread->should_quit;
 
     pthread_mutex_unlock(&thread->quit_lock);
+    return 0;
+}
+
+int h2x_thread_add_request(struct h2x_thread* thread, struct h2x_request* request)
+{
+    if (thread == NULL || request == NULL)
+    {
+        return -1;
+    }
+
+    if(pthread_mutex_lock(&thread->new_data_lock))
+    {
+        H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to lock thread %u state in order to add request to connection %d, errno = %d", thread->thread_id, request->connection->fd, (int) errno);
+        return -1;
+    }
+
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Adding new request for connection %d to thread %u", request->connection->fd, thread->thread_id);
+
+    request->next = thread->new_requests;
+    thread->new_requests = request;
+
+    pthread_mutex_unlock(&thread->new_data_lock);
     return 0;
 }

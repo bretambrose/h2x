@@ -100,6 +100,8 @@ void h2x_connection_pump_outbound_frame(struct h2x_connection* connection);
 void h2x_connection_process_inbound_frame(struct h2x_connection* connection, struct h2x_frame* frame);
 void h2x_connection_process_outbound_frame(struct h2x_connection* connection, struct h2x_frame* frame);
 
+void h2x_connection_add_request(struct h2x_connection* connection, struct h2x_request* request);
+
 h2x_connection_error h2x_connection_handle_inbound_push_promise(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
 h2x_connection_error h2x_connection_handle_inbound_header(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);
 h2x_connection_error h2x_connection_handle_inbound_continuation(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream);

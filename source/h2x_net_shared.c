@@ -337,47 +337,51 @@ void *h2x_processing_thread_function(void * arg)
 
         // optionally combine these two lock/unlock pairs into one
         struct h2x_connection* new_connections = NULL;
+        struct h2x_request* new_requests = NULL;
         h2x_thread_poll_quit_state(self, &done);
-        h2x_thread_poll_new_connections(self, &new_connections);
+        h2x_thread_poll_new_requests_and_connections(self, &new_connections, &new_requests);
 
-        if(new_connections)
+        struct h2x_connection* connection = new_connections;
+        while(connection)
         {
-            struct h2x_connection* connection = new_connections;
-            while(connection)
+            bool should_close_connection = false;
+            if(!done)
             {
-                bool should_close_connection = false;
-                if(!done)
-                {
-                    event.data.ptr = connection;
-                    // don't need to explicitly subscribe to EPOLLERR and EPOLLHUP
-                    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
+                event.data.ptr = connection;
+                // don't need to explicitly subscribe to EPOLLERR and EPOLLHUP
+                event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
 
-                    ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connection->fd, &event);
-                    if (ret_val == -1)
-                    {
-                        H2X_LOG(H2X_LOG_LEVEL_INFO, "Unable to register connection %d with thread %u epoll instance", connection->fd, self->thread_id);
-                        should_close_connection = true;
-                    }
-                    else
-                    {
-                        H2X_LOG(H2X_LOG_LEVEL_INFO, "Added connection %d to thread %u epoll instance", connection->fd, self->thread_id);
-                        h2x_hash_table_add(connection_table, connection);
-                    }
+                ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connection->fd, &event);
+                if (ret_val == -1)
+                {
+                    H2X_LOG(H2X_LOG_LEVEL_INFO, "Unable to register connection %d with thread %u epoll instance", connection->fd, self->thread_id);
+                    should_close_connection = true;
                 }
                 else
                 {
-                    should_close_connection = true;
+                    H2X_LOG(H2X_LOG_LEVEL_INFO, "Added connection %d to thread %u epoll instance", connection->fd, self->thread_id);
+                    h2x_hash_table_add(connection_table, connection);
                 }
-
-                if(should_close_connection)
-                {
-                    h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
-                }
-
-                struct h2x_connection* next_connection = connection->next_new_connection;
-                connection->next_new_connection = NULL;
-                connection = next_connection;
             }
+            else
+            {
+                should_close_connection = true;
+            }
+
+            if(should_close_connection)
+            {
+                h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+            }
+
+            struct h2x_connection* next_connection = connection->next_new_connection;
+            connection->next_new_connection = NULL;
+            connection = next_connection;
+        }
+
+        struct h2x_request* request = new_requests;
+        while(request)
+        {
+            request = request->next;
         }
 
         release_closed_connections(self);
