@@ -4,6 +4,7 @@
 #include <h2x_buffer.h>
 #include <h2x_command.h>
 #include <h2x_connection_manager.h>
+#include <h2x_log.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
 #include <h2x_thread.h>
@@ -22,7 +23,7 @@ bool g_quit;
 
 static int handle_quit_command(int argc, char** argv, void* context)
 {
-    fprintf(stderr, "Shutting down server...\n");
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Shutting down server...");
     g_quit = true;
     return 0;
 }
@@ -63,7 +64,7 @@ static int create_listener_socket(struct h2x_options* options)
     ret_val = getaddrinfo(NULL, port, &hints, &result);
     if(ret_val != 0)
     {
-        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret_val));
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Error %d (errno %d) calling getaddrinfo: %s", ret_val, errno, gai_strerror(ret_val));
         return -1;
     }
 
@@ -93,14 +94,14 @@ static int create_listener_socket(struct h2x_options* options)
 
     if(h2x_make_socket_nonblocking(socket_fd))
     {
-        fprintf(stderr, "Failed to make listener socket non blocking\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Failed to make listener socket non blocking");
         close(socket_fd);
         return -1;
     }
 
     if(listen(socket_fd, SOMAXCONN))
     {
-        fprintf(stderr, "Failed to set socket as passive listener\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Failed to set socket as passive listener");
         close(socket_fd);
         return -1;
     }
@@ -130,20 +131,20 @@ void h2x_do_server(struct h2x_options* options)
     listener_fd = create_listener_socket(options);
     if(listener_fd < 0)
     {
-        fprintf(stderr, "Unable to create and bind listener socket\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create and bind listener socket");
         return;
     }
 
     if(h2x_make_socket_nonblocking(STDIN_FILENO))
     {
-        fprintf(stderr, "Unable to make stdin nonblocking\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to make stdin nonblocking");
         goto CLEANUP;
     }
 
     epoll_fd = epoll_create1(0);
     if(epoll_fd == -1)
     {
-        fprintf(stderr, "Unable to create epoll instance\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create epoll instance");
         goto CLEANUP;
     }
 
@@ -153,7 +154,7 @@ void h2x_do_server(struct h2x_options* options)
     ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, listener_fd, &event);
     if(ret_val == -1)
     {
-        fprintf(stderr, "Unable to register listener socket with epoll instance\n");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to register listener socket with epoll instance");
         goto CLEANUP;
     }
 
@@ -165,7 +166,7 @@ void h2x_do_server(struct h2x_options* options)
         ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, STDIN_FILENO, &event);
         if(ret_val == -1)
         {
-            fprintf(stderr, "Unable to register stdin with epoll instance\n");
+            H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to register stdin with epoll instance");
             goto CLEANUP;
         }
     }
@@ -182,7 +183,7 @@ void h2x_do_server(struct h2x_options* options)
             int event_mask = events[i].events;
             if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI))))
             {
-                fprintf (stderr, "epoll error. events=%u\n", events[i].events);
+                H2X_LOG(H2X_LOG_LEVEL_ERROR, "Unexpected epoll event mask %d on fd %d", event_mask, event_fd);
                 goto CLEANUP;
             }
 
@@ -200,7 +201,7 @@ void h2x_do_server(struct h2x_options* options)
                     {
                         if (errno != EAGAIN && errno != EWOULDBLOCK)
                         {
-                            fprintf(stderr, "Error accepting connection: %u\n", errno);
+                            H2X_LOG(H2X_LOG_LEVEL_ERROR, "Error accepting connection %d, errno = %d", incoming_fd, (int) errno);
                             goto CLEANUP;
                         }
 
@@ -210,8 +211,9 @@ void h2x_do_server(struct h2x_options* options)
                     ret_val = h2x_make_socket_nonblocking(incoming_fd);
                     if(ret_val == -1)
                     {
-                        fprintf(stderr, "Failed to make incoming connection non-blocking\n");
-                        goto CLEANUP;
+                        H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to make connection %d non-blocking, errno = %d", incoming_fd, (int) errno);
+                        close(incoming_fd);
+                        continue;
                     }
 
                     h2x_connection_manager_add_connection(manager, incoming_fd);

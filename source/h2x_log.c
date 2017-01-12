@@ -7,9 +7,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-h2x_log_level g_log_level = H2X_LOG_LEVEL_OFF;
+h2x_log_level g_log_level = H2X_LOG_LEVEL_ERROR;
 
-static h2x_log_dest s_log_dest = H2X_LOG_DEST_NONE;
+static h2x_log_dest s_log_dest = H2X_LOG_DEST_STDERR;
 static FILE* s_log_fp = NULL;
 static bool s_log_synchronize = false;
 static pthread_mutex_t s_log_lock;
@@ -24,7 +24,18 @@ void h2x_logging_init(struct h2x_options* options)
         char* log_filename = options->log_filename;
         if(log_filename == NULL)
         {
-            log_filename = "h2x.log";
+            if(options->mode == H2X_MODE_SERVER)
+            {
+                log_filename = "h2x_server.log";
+            }
+            else if(options->mode == H2X_MODE_CLIENT)
+            {
+                log_filename = "h2x_client.log";
+            }
+            else
+            {
+                log_filename = "h2x_unknown.log";
+            }
         }
 
         s_log_fp = fopen(log_filename, "w");

@@ -1,10 +1,10 @@
 #include <h2x_stream.h>
 #include <h2x_connection.h>
+#include <h2x_log.h>
 #include <h2x_thread.h>
 
 #include <assert.h>
 #include <memory.h>
-#include <stdio.h>
 #include <stdlib.h>
 
 void h2x_socket_state_init(struct h2x_socket_state* socket_state)
@@ -85,6 +85,7 @@ void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *o
     connection->current_outbound_frame_read_position = 0;
     connection->bytes_written = 0;
     connection->bytes_read = 0;
+    connection->next_new_connection = NULL;
 
     for (uint32_t i = 0; i < H2X_ICT_COUNT; ++i) {
         connection->intrusive_chains[i] = NULL;
@@ -228,7 +229,7 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection *connection, h2
         return;
     }
 
-    fprintf(stderr, "Adding connection %d to chain %d\n", connection->fd, (int) chain);
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Adding connection %d to chain %d\n", connection->fd, (int) chain);
 
     struct h2x_thread* thread = connection->owner;
 
@@ -248,7 +249,7 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection *connection, h2
 
 void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain)
 {
-    fprintf(stderr, "Removing connection %d from chain %d\n", (*connection_ref)->fd, (int) chain);
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Removing connection %d from chain %d\n", (*connection_ref)->fd, (int) chain);
 
     struct h2x_connection* connection = *connection_ref;
 
@@ -569,14 +570,4 @@ h2x_connection_error h2x_connection_handle_inbound_stream_priority(struct h2x_co
 
 h2x_connection_error h2x_connection_handle_inbound_stream_error(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream, h2x_connection_error error) {
     return H2X_NO_ERROR;
-}
-
-bool h2x_connection_write_outbound_data(struct h2x_connection *connection) {
-    /*
-    TODO
-
-    ??;
-     */
-
-    return false;
 }
