@@ -194,6 +194,99 @@ uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection
     return stream_id;
 }
 
+void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, struct h2x_header_list* header_list)
+{
+    struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
+    h2x_frame_init(frame);
+    h2x_frame_set_type(frame, H2X_HEADERS);
+    h2x_frame_set_stream_identifier(frame, stream_id);
+    frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
+    frame->size = MAX_RECV_FRAME_SIZE;
+
+    uint32_t headers_written_size = 0;
+    uint32_t size_of_eq = 1;
+    uint32_t size_of_end = 2;
+
+    struct h2x_header* cur = h2x_header_next(header_list);
+
+    while(cur)
+    {
+        char* name = cur->name;
+        char* value = cur->value;
+
+        size_t name_len = strlen(name);
+        size_t value_len = strlen(value);
+
+        if(name_len + value_len + size_of_eq + size_of_end + headers_written_size > h2x_frame_get_length(frame) )
+        {
+            h2x_frame_set_length(frame, headers_written_size);
+            frame->size = headers_written_size + FRAME_HEADER_LENGTH;
+            h2x_connection_push_frame_to_stream(connection, frame);
+            headers_written_size = 0;
+            frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
+            h2x_frame_init(frame);
+            frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
+            frame->size = MAX_RECV_FRAME_SIZE;
+            h2x_frame_set_type(frame, H2X_CONTINUATION);
+            h2x_frame_set_stream_identifier(frame, stream_id);
+        }
+
+        memcpy(frame->raw_data + FRAME_HEADER_LENGTH + headers_written_size, name, name_len);
+        headers_written_size += name_len;
+        memcpy(frame->raw_data + FRAME_HEADER_LENGTH + headers_written_size, "=", size_of_eq);
+        headers_written_size += size_of_eq;
+        memcpy(frame->raw_data + FRAME_HEADER_LENGTH + headers_written_size, value, value_len);
+        headers_written_size += value_len;
+        memcpy(frame->raw_data + FRAME_HEADER_LENGTH + headers_written_size, "\r\n", size_of_end);
+        headers_written_size += size_of_end;
+    }
+
+    h2x_frame_set_length(frame, headers_written_size);
+    h2x_frame_set_flags(frame, H2X_END_HEADERS);
+    frame->size = headers_written_size + FRAME_HEADER_LENGTH;
+
+    h2x_connection_push_frame_to_stream(connection, frame);
+}
+
+void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint32_t* data, uint32_t size, bool lastFrame)
+{
+    struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
+    h2x_frame_init(frame);
+    h2x_frame_set_stream_identifier(frame, stream_id);
+    h2x_frame_set_type(frame, H2X_DATA);
+    frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
+    frame->size = MAX_RECV_FRAME_SIZE;
+
+    uint32_t data_written_size = 0;
+
+    while(data_written_size < size)
+    {
+        uint32_t to_write = min(size, MAX_RECV_FRAME_SIZE - FRAME_HEADER_LENGTH);
+        memcpy(frame->raw_data + FRAME_HEADER_LENGTH, data, to_write);
+        h2x_frame_set_length(frame, to_write);
+        frame->size = to_write + FRAME_HEADER_LENGTH;
+
+        data_written_size += to_write;
+
+        if(data_written_size == size && lastFrame)
+        {
+            h2x_frame_set_flags(frame, H2X_END_STREAM);
+        }
+
+        h2x_connection_push_frame_to_stream(connection, frame);
+
+        if(data_written_size < size)
+        {
+            frame = (struct h2x_frame*) malloc(sizeof(struct h2x_frame));
+            h2x_frame_init(frame);
+            frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
+            frame->size = MAX_RECV_FRAME_SIZE;
+            h2x_frame_set_type(frame, H2X_DATA);
+            h2x_frame_set_stream_identifier(frame, stream_id);
+        }
+    }
+}
+
 struct h2x_frame *h2x_connection_pop_frame(struct h2x_connection *connection) {
     return h2x_frame_list_pop(&connection->outgoing_frames);
 }
