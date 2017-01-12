@@ -573,3 +573,8 @@ h2x_connection_error h2x_connection_handle_inbound_stream_priority(struct h2x_co
 h2x_connection_error h2x_connection_handle_inbound_stream_error(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream, h2x_connection_error error) {
     return H2X_NO_ERROR;
 }
+
+void h2x_connection_add_request(struct h2x_connection* connection, struct h2x_request* request)
+{
+    h2x_thread_add_request(connection->owner, request);
+}

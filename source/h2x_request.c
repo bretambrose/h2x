@@ -9,6 +9,8 @@ void h2x_request_init(struct h2x_request* request, struct h2x_connection* connec
     h2x_header_list_init(&request->header_list);
     request->connection = connection;
     request->user_data = user_data;
+    request->next = NULL;
+    request->stream_id = 0;
 }
 
 void h2x_request_cleanup(struct h2x_request* request)

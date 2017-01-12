@@ -8,6 +8,8 @@ struct h2x_request {
     void* user_data;
     struct h2x_header_list header_list;
     struct h2x_request* next;
+
+    uint32_t stream_id;
 };
 
 void h2x_request_init(struct h2x_request* request, struct h2x_connection* connection, void* user_data);

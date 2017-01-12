@@ -18,6 +18,7 @@ struct h2x_thread {
     pthread_t thread;               // const, thread-safe read
     uint32_t connection_count;      // non-const, only readable by connection manager thread
     int epoll_fd;
+    struct h2x_request* inprogress_requests;
 
     pthread_mutex_t new_data_lock;    // lock for shared state between processing thread and connection manager
     struct h2x_connection* new_connections;  // shared state
@@ -49,7 +50,7 @@ void h2x_thread_cleanup(struct h2x_thread* thread);
 
 int h2x_thread_add_connection(struct h2x_thread* thread, struct h2x_connection* connection);
 int h2x_thread_add_request(struct h2x_thread* thread, struct h2x_request* request);
-int h2x_thread_poll_requests_and_connections(struct h2x_thread* thread, struct h2x_connection** new_connections, struct h2x_request** new_requests);
+int h2x_thread_poll_new_requests_and_connections(struct h2x_thread* thread, struct h2x_connection** new_connections, struct h2x_request** new_requests);
 
 int h2x_thread_poll_quit_state(struct h2x_thread* thread, bool* quit_state);
 

@@ -123,7 +123,7 @@ int h2x_thread_add_connection(struct h2x_thread* thread, struct h2x_connection *
     return 0;
 }
 
-int h2x_thread_poll_requests_and_connections(struct h2x_thread* thread, struct h2x_connection** new_connections)
+int h2x_thread_poll_new_requests_and_connections(struct h2x_thread* thread, struct h2x_connection** new_connections, struct h2x_request** new_requests)
 {
     *new_connections = NULL;
 
