@@ -94,8 +94,8 @@ void h2x_connection_set_stream_error_callback(struct h2x_connection* connection,
 void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame* frame);
 
 void h2x_queue_new_request(struct h2x_connection* connection, struct h2x_request);
-void h2x_push_headers(struct h2x_connection* connection, struct h2x_header_list*);
-void h2x_push_data_segment(struct h2x_connection* connection, uint32_t* data, uint32_t size, bool lastFrame);
+void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, struct h2x_header_list*);
+void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint32_t* data, uint32_t size, bool lastFrame);
 
 uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection);
 
