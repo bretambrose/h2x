@@ -1,6 +1,5 @@
 #include <h2x_stream.h>
 #include <h2x_connection.h>
-#include <h2x_headers.h>
 #include <h2x_log.h>
 #include <h2x_thread.h>
 
@@ -157,25 +156,24 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
                 connection->current_frame_read += amount_to_read;
 
                 if (connection->current_frame_read == connection->current_frame_size) {
-                    h2x_connection_push_frame_to_stream(connection, connection->current_frame);
+                    h2x_connection_push_frame_to_stream(connection, connection->current_frame, H2X_STREAM_INBOUND);
                     connection->state = H2X_NOT_ON_FRAME;
                 }
         }
     } while (read < data_length);
 }
 
-void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame *frame) {
+void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame *frame, h2x_stream_push_dir push_dir) {
     struct h2x_stream *stream = h2x_hash_table_find(&connection->streams, h2x_frame_get_stream_identifier(frame));
 
     if (!stream) {
         stream = (struct h2x_stream *) malloc(sizeof(struct h2x_stream));
         h2x_stream_init(stream);
         stream->stream_identifier = h2x_frame_get_stream_identifier(frame);
-        stream->push_dir = H2X_STREAM_INBOUND;
         h2x_hash_table_add(&connection->streams, stream);
     }
 
-    if (stream->push_dir == H2X_STREAM_INBOUND) {
+    if (push_dir == H2X_STREAM_INBOUND) {
         h2x_connection_process_inbound_frame(connection, frame);
     } else {
         h2x_connection_process_outbound_frame(connection, frame);
@@ -189,7 +187,6 @@ uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection
     struct h2x_stream *stream = (struct h2x_stream *) malloc(sizeof(struct h2x_stream));
     h2x_stream_init(stream);
     stream->stream_identifier = stream_id;
-    stream->push_dir = H2X_STREAM_OUTBOUND;
     stream->user_data = user_data;
     h2x_hash_table_add(&connection->streams, stream);
 
@@ -223,7 +220,7 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
         {
             h2x_frame_set_length(frame, headers_written_size);
             frame->size = headers_written_size + FRAME_HEADER_LENGTH;
-            h2x_connection_push_frame_to_stream(connection, frame);
+            h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_INBOUND);
             headers_written_size = 0;
             frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
             h2x_frame_init(frame);
@@ -248,7 +245,7 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
     h2x_frame_set_flags(frame, H2X_END_HEADERS);
     frame->size = headers_written_size + FRAME_HEADER_LENGTH;
 
-    h2x_connection_push_frame_to_stream(connection, frame);
+    h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_INBOUND);
 }
 
 void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint8_t* data, uint32_t size, bool lastFrame)
@@ -276,7 +273,7 @@ void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id
             h2x_frame_set_flags(frame, H2X_END_STREAM);
         }
 
-        h2x_connection_push_frame_to_stream(connection, frame);
+        h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_OUTBOUND);
 
         if(data_written_size < size)
         {

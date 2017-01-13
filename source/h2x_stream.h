@@ -12,7 +12,6 @@ struct h2x_frame_list;
 struct h2x_stream
 {
     uint32_t stream_identifier;
-    h2x_stream_push_dir push_dir;
     h2x_stream_state state;
     void* user_data;
     struct h2x_frame_list header_fragments;

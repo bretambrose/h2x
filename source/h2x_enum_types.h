@@ -31,7 +31,6 @@ typedef enum  {
 } h2x_stream_state;
 
 typedef enum {
-    H2X_STREAM_NOT_INIT,
     H2X_STREAM_INBOUND,
     H2X_STREAM_OUTBOUND,
 } h2x_stream_push_dir;

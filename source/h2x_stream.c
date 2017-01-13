@@ -8,7 +8,6 @@ void h2x_stream_init(struct h2x_stream* stream)
     stream->stream_identifier = 0;
     stream->state = H2X_IDLE;
     h2x_frame_list_init(&stream->header_fragments);
-    stream->push_dir = H2X_STREAM_NOT_INIT;
     stream->end_header_sent = false;
     stream->user_data = NULL;
 }
