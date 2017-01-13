@@ -10,6 +10,7 @@ void h2x_stream_init(struct h2x_stream* stream)
     h2x_frame_list_init(&stream->header_fragments);
     stream->push_dir = H2X_STREAM_NOT_INIT;
     stream->end_header_sent = false;
+    stream->user_data = NULL;
 }
 
 void h2x_stream_clean(struct h2x_stream* stream)

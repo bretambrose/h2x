@@ -353,7 +353,7 @@ void process_new_requests(struct h2x_request* requests)
         struct h2x_connection* connection = request->connection;
         struct h2x_thread *thread = connection->owner;
 
-        request->stream_id = h2x_connection_create_outbound_stream(connection);
+        request->stream_id = h2x_connection_create_outbound_stream(connection, request->user_data);
         (*(connection->on_stream_headers_received))(connection, &request->header_list, request->stream_id, request->user_data);
         h2x_push_headers(connection, request->stream_id, &request->header_list);
 

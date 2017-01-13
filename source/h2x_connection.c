@@ -1,5 +1,6 @@
 #include <h2x_stream.h>
 #include <h2x_connection.h>
+#include <h2x_headers.h>
 #include <h2x_log.h>
 #include <h2x_thread.h>
 
@@ -181,7 +182,7 @@ void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, stru
     }
 }
 
-uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection) {
+uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection, void* user_data) {
     uint32_t stream_id = connection->next_outgoing_stream_id;
     connection->next_outgoing_stream_id += 2;
 
@@ -189,6 +190,7 @@ uint32_t h2x_connection_create_outbound_stream(struct h2x_connection *connection
     h2x_stream_init(stream);
     stream->stream_identifier = stream_id;
     stream->push_dir = H2X_STREAM_OUTBOUND;
+    stream->user_data = user_data;
     h2x_hash_table_add(&connection->streams, stream);
 
     return stream_id;
@@ -639,11 +641,79 @@ h2x_connection_error h2x_connection_handle_inbound_push_promise(struct h2x_conne
     return H2X_NO_ERROR;
 }
 
+void parse_header_frames_and_trigger_callback(struct h2x_connection* connection, struct h2x_stream* stream) {
+    struct h2x_frame_list* header_fragments = &stream->header_fragments;
+    struct h2x_header_list* header_list = (struct h2x_header_list*)malloc(sizeof(struct h2x_header_list));
+    h2x_header_list_init(header_list);
+    struct h2x_frame* current_frame = NULL;
+
+    while((current_frame = h2x_frame_list_pop(header_fragments))) {
+
+        uint32_t read_index = 0;
+        uint32_t line_end_index = 0;
+        uint32_t delimiter_index = 0;
+        uint32_t start_mark = 0;
+        uint32_t current_char = 0;
+        uint8_t* payload = h2x_frame_get_payload(current_frame);
+        uint32_t payload_length = h2x_frame_get_length(current_frame);
+        uint8_t* payloadIter = payload;
+
+        while(read_index < payload_length && (current_char = *payloadIter++)) {
+            if(current_char == '=') {
+                delimiter_index = read_index;
+            }
+            if(current_char == '\r') {
+                line_end_index = read_index;
+            }
+
+            if(delimiter_index && line_end_index) {
+                char* name = (char*)malloc((delimiter_index - start_mark / sizeof(char)) + 1);
+                char* value = (char*)malloc((line_end_index - delimiter_index / sizeof(char)) + 1);
+
+                memcpy(name, payload + start_mark, delimiter_index - start_mark);
+                memcpy(value, payload + delimiter_index + 1, line_end_index - delimiter_index - 1);
+                start_mark = line_end_index + 2;
+
+                delimiter_index = 0;
+                line_end_index = 0;
+
+                struct h2x_header header;
+                h2x_header_init(&header, name, value);
+                h2x_header_list_append(header_list, header);
+            }
+
+            read_index++;
+        }
+    }
+
+    if(connection->on_stream_headers_received) {
+        connection->on_stream_headers_received(connection, header_list, stream->stream_identifier, stream->user_data);
+    }
+}
+
 h2x_connection_error h2x_connection_handle_inbound_header(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream) {
+    if(h2x_frame_get_flags(frame) & H2X_END_HEADERS) {
+        h2x_frame_list_append(&stream->header_fragments, frame);
+        stream->end_header_sent = true;
+        parse_header_frames_and_trigger_callback(connection, stream);
+
+    } else {
+        h2x_frame_list_append(&stream->header_fragments, frame);
+    }
+
     return H2X_NO_ERROR;
 }
 
 h2x_connection_error h2x_connection_handle_inbound_continuation(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream) {
+    if(h2x_frame_get_flags(frame) & H2X_END_HEADERS) {
+        h2x_frame_list_append(&stream->header_fragments, frame);
+        stream->end_header_sent = true;
+        parse_header_frames_and_trigger_callback(connection, stream);
+
+    } else {
+        h2x_frame_list_append(&stream->header_fragments, frame);
+    }
+
     return H2X_NO_ERROR;
 }
 
@@ -652,6 +722,12 @@ h2x_connection_error h2x_connection_handle_inbound_stream_closed(struct h2x_conn
 }
 
 h2x_connection_error h2x_connection_handle_inbound_stream_data(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream) {
+
+     if(connection->on_stream_body_received) {
+         connection->on_stream_body_received(connection, h2x_frame_get_payload(frame), h2x_frame_get_length(frame), stream->stream_identifier,
+                                             h2x_frame_get_flags(frame) & H2X_STREAM_CLOSED, stream->user_data);
+     }
+
     return H2X_NO_ERROR;
 }
 
