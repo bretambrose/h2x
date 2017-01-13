@@ -2,10 +2,13 @@
 
 #include <h2x_buffer.h>
 #include <h2x_command.h>
+#include <h2x_connection.h>
 #include <h2x_connection_manager.h>
+#include <h2x_headers.h>
 #include <h2x_log.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
+#include <h2x_request.h>
 #include <h2x_thread.h>
 
 #include <errno.h>
@@ -39,9 +42,89 @@ static int handle_connect_command(int argc, char** argv, void* context)
     return 0;
 }
 
+struct fake_request
+{
+    FILE* body_file;
+};
+
+static bool fake_request_on_stream_data_needed(struct h2x_connection* connection, uint32_t stream_id, uint8_t* buffer, uint32_t buffer_size, uint32_t* bytes_written, void* user_data)
+{
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Fake request data needed callback - stream_id %u, connection %d", stream_id, connection->fd);
+
+    struct fake_request *request = user_data;
+    if (!request->body_file)
+    {
+        H2X_LOG(H2X_LOG_LEVEL_INFO, "Fake request stream_id %u, connection %d has no body", stream_id, connection->fd);
+        bytes_written = 0;
+        return true;
+    }
+
+    size_t bytes_read = fread(buffer, 1, (size_t)buffer_size, request->body_file);
+
+    *bytes_written = (uint32_t) bytes_read;
+
+    if(bytes_read == 0)
+    {
+        fclose(request->body_file);
+        request->body_file = NULL;
+    }
+
+    return bytes_read == 0;
+}
+
+static void fake_request_stream_error_callback(struct h2x_connection* connection, h2x_connection_error error, uint32_t stream_id, void* user_data)
+{
+    H2X_LOG(H2X_LOG_LEVEL_ERROR, "Fake request stream error callback - stream_id %u, connection %d, error %u", stream_id, connection->fd, (uint32_t)error);
+}
+
+static int handle_request_command(int argc, char** argv, void* context)
+{
+    struct h2x_connection_manager *manager = context;
+    struct h2x_connection *connection = h2x_connection_manager_add_client_connection(manager, argv[0], atoi(argv[1]));
+
+    h2x_connection_set_stream_data_needed_callback(connection, fake_request_on_stream_data_needed);
+    h2x_connection_set_stream_error_callback(connection, fake_request_stream_error_callback);
+
+    struct fake_request *user_data = malloc(sizeof(struct fake_request));
+    user_data->body_file = fopen(argv[3], "r");
+
+    struct h2x_request *request = malloc(sizeof(struct h2x_request));
+    h2x_request_init(request, connection, user_data);
+
+    FILE *header_file = fopen(argv[2], "r");
+    if (header_file)
+    {
+        char header_name_buffer[256];
+        char header_value_buffer[256];
+        bool done = false;
+        while(!done)
+        {
+            int match_count = fscanf(header_file, "%s %s", header_name_buffer, header_value_buffer);
+            if(match_count != 2)
+            {
+                done = true;
+                break;
+            }
+
+            H2X_LOG(H2X_LOG_LEVEL_INFO, "Fake request adding header pair %s=%s", header_name_buffer, header_value_buffer);
+
+            struct h2x_header header;
+            header.name = strdup(header_name_buffer);
+            header.value = strdup(header_value_buffer);
+
+            h2x_header_list_append(&request->header_list, header);
+        }
+    }
+
+    h2x_connection_add_request(connection, request);
+
+    return 0;
+}
+
 struct command_def client_commands[] = {
     { "quit", 0, false, handle_quit_command, "shuts down the client" },
     { "connect", 2, false, handle_connect_command, "[dest ip] [dest port] - attempts to connect to an h2x server process" },
+    { "request", 4, false, handle_request_command, "[dest ip] [dest port] [header_file] [body_file] - attempts to connect to an h2x server process and send a request built from the header and body files" },
     { "list_threads", 0, false, h2x_command_handle_list_threads, "lists all connection manager threads" },
     { "list_connections", 1, false, h2x_command_handle_list_connections, "[thread_id] - lists all connections within a thread" },
     { "describe_thread", 1, false, h2x_command_handle_describe_thread, "[thread_id] - dumps detailed information about a thread" },
