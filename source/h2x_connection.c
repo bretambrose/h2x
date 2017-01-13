@@ -26,7 +26,7 @@ static uint32_t stream_hash_function(void *arg) {
     return stream->stream_identifier;
 }
 
-static void get_padding(struct h2x_frame *frame, uint8_t *padding_offset, uint8_t *padding_length) {
+/*static void get_padding(struct h2x_frame *frame, uint8_t *padding_offset, uint8_t *padding_length) {
     *padding_offset = 0;
     *padding_length = 0;
 
@@ -34,45 +34,7 @@ static void get_padding(struct h2x_frame *frame, uint8_t *padding_offset, uint8_
         *padding_offset = 1;
         *padding_length = h2x_frame_get_payload(frame)[0];
     }
-}
-
-void stream_headers_received(struct h2x_stream *stream, struct h2x_frame *frame, void *data) {
-    struct h2x_connection *connection = (struct h2x_connection *) data;
-
-    if (connection->on_stream_headers_received) {
-        uint8_t padding_offset = 0;
-        uint8_t padding_length = 0;
-
-        get_padding(frame, &padding_offset, &padding_length);
-
-        struct h2x_header_list *headers = NULL;//decode and aggregate these.
-        connection->on_stream_headers_received(connection, headers,
-                                               stream->stream_identifier, connection->user_data);
-    }
-}
-
-void stream_data_received(struct h2x_stream *stream, struct h2x_frame *frame, bool final_frame, void *data) {
-    struct h2x_connection *connection = (struct h2x_connection *) data;
-
-    if (connection->on_stream_body_received) {
-        uint8_t padding_offset = 0;
-        uint8_t padding_length = 0;
-
-        get_padding(frame, &padding_offset, &padding_length);
-
-        connection->on_stream_body_received(connection, h2x_frame_get_payload(frame) + padding_offset,
-                                            h2x_frame_get_length(frame) - padding_length,
-                                            stream->stream_identifier, final_frame, connection->user_data);
-    }
-}
-
-void stream_error(struct h2x_stream *stream, struct h2x_frame *frame, h2x_connection_error error, void *data) {
-    struct h2x_connection *connection = (struct h2x_connection *) data;
-
-    if (connection->on_stream_error) {
-        connection->on_stream_error(connection, error, stream->stream_identifier, connection->user_data);
-    }
-}
+}*/
 
 void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *owner, int fd, h2x_mode mode) {
     connection->owner = owner;
