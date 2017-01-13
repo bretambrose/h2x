@@ -112,6 +112,7 @@ struct h2x_connection* h2x_connection_manager_add_connection(struct h2x_connecti
     {
         struct h2x_thread *thread = thread_node->thread;
         uint32_t thread_connection_count = thread->connection_count;
+        H2X_LOG(H2X_LOG_LEVEL_TRACE, "Considering adding connection %d to thread %u with %u(%u) connections", fd, thread->thread_id, thread_connection_count, thread->options->connections_per_thread);
         if (thread_connection_count <= lowest_count &&
             thread_connection_count < thread->options->connections_per_thread)
         {

@@ -198,18 +198,18 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
 {
     struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
     h2x_frame_init(frame);
-    h2x_frame_set_type(frame, H2X_HEADERS);
-    h2x_frame_set_stream_identifier(frame, stream_id);
     frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
     frame->size = MAX_RECV_FRAME_SIZE;
-
+    h2x_frame_set_type(frame, H2X_HEADERS);
+    h2x_frame_set_stream_identifier(frame, stream_id);
+    h2x_frame_set_length(frame, MAX_RECV_FRAME_SIZE - FRAME_HEADER_LENGTH);
     uint32_t headers_written_size = 0;
     uint32_t size_of_eq = 1;
     uint32_t size_of_end = 2;
 
-    struct h2x_header* cur = h2x_header_next(header_list);
+    struct h2x_header* cur = NULL;
 
-    while(cur)
+    while((cur = h2x_header_next(header_list)))
     {
         char* name = cur->name;
         char* value = cur->value;
@@ -229,6 +229,7 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
             frame->size = MAX_RECV_FRAME_SIZE;
             h2x_frame_set_type(frame, H2X_CONTINUATION);
             h2x_frame_set_stream_identifier(frame, stream_id);
+            h2x_frame_set_length(frame, MAX_RECV_FRAME_SIZE - FRAME_HEADER_LENGTH);
         }
 
         memcpy(frame->raw_data + FRAME_HEADER_LENGTH + headers_written_size, name, name_len);
@@ -252,10 +253,10 @@ void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id
 {
     struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
     h2x_frame_init(frame);
-    h2x_frame_set_stream_identifier(frame, stream_id);
-    h2x_frame_set_type(frame, H2X_DATA);
     frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
     frame->size = MAX_RECV_FRAME_SIZE;
+    h2x_frame_set_stream_identifier(frame, stream_id);
+    h2x_frame_set_type(frame, H2X_DATA);
 
     uint32_t data_written_size = 0;
 
@@ -303,6 +304,12 @@ void h2x_connection_set_stream_body_receieved_callback(struct h2x_connection *co
                                                                        uint32_t length, uint32_t, bool finalFrame,
                                                                        void *)) {
     connection->on_stream_body_received = callback;
+}
+
+void h2x_connection_set_stream_data_needed_callback(struct h2x_connection* connection,
+                                                    bool(*on_stream_data_needed)(struct h2x_connection*, uint32_t, uint8_t*, uint32_t, uint32_t*, void*))
+{
+    connection->on_stream_data_needed = on_stream_data_needed;
 }
 
 void h2x_connection_set_stream_error_callback(struct h2x_connection *connection,

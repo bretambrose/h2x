@@ -35,7 +35,6 @@ uint32_t h2x_frame_get_length(struct h2x_frame* frame)
     frame_length <<= SHIFT_TWO_BYTES;
     frame_length |= frame->raw_data[1];
     frame_length <<= SHIFT_ONE_BYTE;
-    frame_length |= frame->raw_data[1];
     frame_length |= frame->raw_data[2];
 
     return frame_length;
@@ -47,7 +46,7 @@ void h2x_frame_set_length(struct h2x_frame* frame, uint32_t length)
     assert(length <= frame->size - FRAME_HEADER_LENGTH);
 
     uint8_t current_type_value = frame->raw_data[3];
-    h2x_set_integer_as_big_endian(frame->raw_data, length);
+    h2x_set_integer_as_big_endian(frame->raw_data, length, 3);
     frame->raw_data[3] = current_type_value;
 }
 
@@ -87,7 +86,7 @@ void h2x_frame_set_stream_identifier(struct h2x_frame* frame, uint32_t stream_id
 {
     assert(frame->size > FRAME_HEADER_LENGTH);
 
-    h2x_set_integer_as_big_endian(frame->raw_data + 5, stream_id);
+    h2x_set_integer_as_big_endian(frame->raw_data + 5, stream_id, sizeof(uint32_t));
     frame->raw_data[5] &= ~R_MASK;
 }
 

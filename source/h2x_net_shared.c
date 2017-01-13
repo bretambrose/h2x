@@ -43,14 +43,14 @@ bool h2x_is_little_endian_system()
     return (int)*((unsigned char *)&i)==1;
 }
 
-void h2x_set_integer_as_big_endian(uint8_t* to_set, uint32_t int_value)
+void h2x_set_integer_as_big_endian(uint8_t* to_set, uint32_t int_value, uint32_t number_of_bytes)
 {
     uint16_t data_index = 0;
     uint16_t int_index = 0;
 
     if(h2x_is_little_endian_system())
     {
-        int_index = sizeof(uint32_t) - 1;
+        int_index = number_of_bytes - 1;
     }
 
     uint8_t* int_as_buffer = (uint8_t*)&int_value;
@@ -331,6 +331,7 @@ void process_new_connections(struct h2x_connection* connections, int epoll_fd, s
         }
         else
         {
+            H2X_LOG(H2X_LOG_LEVEL_INFO, "Moving new connection %d on thread %u to closed due to quit state", connection->fd, thread->thread_id);
             should_close_connection = true;
         }
 
@@ -354,7 +355,9 @@ void process_new_requests(struct h2x_request* requests)
         struct h2x_thread *thread = connection->owner;
 
         request->stream_id = h2x_connection_create_outbound_stream(connection);
-        (*(connection->on_stream_headers_received))(connection, &request->header_list, request->stream_id, request->user_data);
+
+        H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Started processing new request %u on connection %d", request->stream_id, connection->fd);
+
         h2x_push_headers(connection, request->stream_id, &request->header_list);
 
         struct h2x_request* next_request = request->next;
@@ -382,11 +385,14 @@ void process_inprogress_requests(struct h2x_thread* thread)
         bool is_request_finished = (*(connection->on_stream_data_needed))(connection, request->stream_id, body_buffer, BODY_BUFFER_SIZE, &bytes_written, request->user_data);
 
         h2x_push_data_segment(connection, request->stream_id, body_buffer, bytes_written, is_request_finished);
+        H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Pushed %u body bytes for request %u on connection %d", bytes_written, request->stream_id, connection->fd);
 
         if(is_request_finished)
         {
-            // TODO: do something for a finished request rather than just let it leak
+            H2X_LOG(H2X_LOG_LEVEL_INFO, "Finished processing request %u on connection %d", request->stream_id, connection->fd);
             *request_ptr = (*request_ptr)->next;
+            h2x_request_cleanup(request);
+            free(request);
         }
         else
         {

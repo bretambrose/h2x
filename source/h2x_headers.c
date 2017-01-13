@@ -54,8 +54,12 @@ void h2x_header_list_append(struct h2x_header_list* list, struct h2x_header head
 struct h2x_header* h2x_header_next(struct h2x_header_list* list)
 {
     struct h2x_header_list_node* temp = list->cur;
-    list->cur = list->cur->next;
-    return &temp->header;
+    if(list->cur)
+    {
+        list->cur = list->cur->next;
+        return &temp->header;
+    }
+    return NULL;
 }
 
 void h2x_header_reset_iter(struct h2x_header_list* list)
