@@ -106,7 +106,7 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
 struct h2x_connection* h2x_connection_manager_add_connection(struct h2x_connection_manager* connection_manager, int fd)
 {
     struct h2x_thread *add_thread = NULL;
-    uint32_t lowest_count = 0;
+    uint32_t lowest_count = (uint32_t)-1;
     struct h2x_thread_node *thread_node = connection_manager->processing_threads;
     while (thread_node)
     {

@@ -21,3 +21,4 @@ void h2x_headers_add(struct h2x_request* request, char* name, char* value);
 void h2x_headers_set_user_data(struct h2x_request* request, void*);
 
 #endif /* H2X_REQUEST_H*/
+

@@ -55,7 +55,7 @@ void h2x_set_integer_as_big_endian(uint8_t* to_set, uint32_t int_value, uint32_t
 
     uint8_t* int_as_buffer = (uint8_t*)&int_value;
 
-    for(;data_index < sizeof(uint32_t); ++data_index, --int_index)
+    for(;data_index < number_of_bytes; ++data_index, --int_index)
     {
         to_set[data_index] = int_as_buffer[int_index];
     }
@@ -118,12 +118,11 @@ static void release_closed_connections(struct h2x_thread* thread)
 
 void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_event* events, int event_count)
 {
-    int i;
-    for(i = 0; i < H2X_ICT_COUNT; ++i)
-    {
-        assert(thread->intrusive_chains[i] == NULL);
-    }
+    assert(thread->intrusive_chains[H2X_ICT_PENDING_READ] == NULL);
+    assert(thread->intrusive_chains[H2X_ICT_PENDING_CLOSE] == NULL);
+    // the write chain can already be pre-populated due to request processing
 
+    int i;
     for(i = 0; i < event_count; i++)
     {
         struct epoll_event* event = events + i;

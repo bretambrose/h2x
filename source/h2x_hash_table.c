@@ -71,7 +71,7 @@ void* h2x_hash_table_find(struct h2x_hash_table* table, uint32_t key)
         uint32_t existing_hash_key = (table->hash_function)(entry_ptr->data);
         if(existing_hash_key == key)
         {
-            return entry_ptr;
+            return entry_ptr->data;
         }
 
         entry_ptr = entry_ptr->next;
