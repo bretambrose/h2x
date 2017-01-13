@@ -3,7 +3,9 @@
 
 #include <h2x_buffer.h>
 #include <h2x_command.h>
+#include <h2x_connection.h>
 #include <h2x_connection_manager.h>
+#include <h2x_headers.h>
 #include <h2x_log.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
@@ -28,6 +30,80 @@ static int handle_quit_command(int argc, char** argv, void* context)
     return 0;
 }
 
+void modified_echo_header_callback(struct h2x_connection* connection, struct h2x_header_list* headers, uint32_t stream_id, void* user_data)
+{
+    struct h2x_header_list* new_headers = malloc(sizeof(struct h2x_header_list));
+    h2x_header_list_init(new_headers);
+
+    h2x_header_reset_iter(headers);
+
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Server received request headers on stream %u, connection %d:", stream_id, connection->fd)
+
+    struct h2x_header* header = h2x_header_next(headers);
+    while(header)
+    {
+        H2X_LOG(H2X_LOG_LEVEL_INFO, " %s = %s", header->name, header->value)
+
+        struct h2x_header new_header;
+        new_header.name = strdup(header->name);
+        new_header.value = strdup(header->value);
+
+        h2x_header_list_append(new_headers, new_header);
+        header = h2x_header_next(headers);
+    }
+
+    struct h2x_header response_code_header;
+    response_code_header.name = strdup("response-code");
+
+    char buffer[256];
+    sprintf(buffer, "%d", 200);
+    response_code_header.value = strdup(buffer);
+
+    h2x_header_list_append(new_headers, response_code_header);
+
+    h2x_push_headers(connection, stream_id, new_headers);
+}
+
+char *response_append_string = " is what you sent me";
+
+void modified_echo_body_callback(struct h2x_connection* connection, uint8_t* data, uint32_t length, uint32_t stream_id, bool lastFrame, void* user_data)
+{
+    uint32_t response_size = length;
+    if(lastFrame)
+    {
+        response_size += strlen(response_append_string);
+    }
+
+    if(response_size == 0)
+    {
+        return;
+    }
+
+    uint8_t* response_data = malloc(response_size);
+    memcpy(response_data, data, length);
+    if(lastFrame)
+    {
+        memcpy(response_data + length, response_append_string, strlen(response_append_string));
+    }
+
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Server received request body data on stream %u, connection %d:", stream_id, connection->fd)
+
+    char *raw_data_string = malloc(length + 1);
+    raw_data_string[length] = 0;
+    memcpy(raw_data_string, data, length);
+
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Raw data: %s", raw_data_string);
+
+    free(raw_data_string);
+
+    h2x_push_data_segment(connection, stream_id, response_data, response_size, lastFrame);
+    if(lastFrame)
+    {
+        h2x_push_rst_stream(connection, stream_id, H2X_NO_ERROR);
+    }
+
+    free(response_data);
+}
 
 struct command_def server_commands[] = {
     { "quit", 0, false, handle_quit_command, "shuts down the server" },
@@ -131,7 +207,7 @@ void h2x_do_server(struct h2x_options* options)
     listener_fd = create_listener_socket(options);
     if(listener_fd < 0)
     {
-        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create and bind listener socket");
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create and bind listener socket, errno = %d", errno);
         return;
     }
 
@@ -216,7 +292,9 @@ void h2x_do_server(struct h2x_options* options)
                         continue;
                     }
 
-                    h2x_connection_manager_add_connection(manager, incoming_fd);
+                    struct h2x_connection* server_connection = h2x_connection_manager_add_connection(manager, incoming_fd);
+                    h2x_connection_set_stream_headers_receieved_callback(server_connection, modified_echo_header_callback);
+                    h2x_connection_set_stream_body_receieved_callback(server_connection, modified_echo_body_callback);
                 }
             }
             else

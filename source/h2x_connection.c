@@ -6,6 +6,7 @@
 #include <assert.h>
 #include <memory.h>
 #include <stdlib.h>
+#include "h2x_net_shared.h"
 
 void h2x_socket_state_init(struct h2x_socket_state* socket_state)
 {
@@ -110,7 +111,7 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
                 break;
 
             case H2X_ON_DATA:
-                amount_to_read = min(data_length - read, connection->current_frame_size - FRAME_HEADER_LENGTH -
+                amount_to_read = min(data_length - read, connection->current_frame_size -
                                                          connection->current_frame_read);
                 memcpy(connection->current_frame->raw_data + connection->current_frame_read, data + read,
                        amount_to_read);
@@ -121,8 +122,9 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
                     h2x_connection_push_frame_to_stream(connection, connection->current_frame, H2X_STREAM_INBOUND);
                     connection->state = H2X_NOT_ON_FRAME;
                 }
+                break;
         }
-    } while (read < data_length);
+    } while (read < data_length || connection->state != H2X_NOT_ON_FRAME);
 }
 
 void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame *frame, h2x_stream_push_dir push_dir) {
@@ -217,22 +219,21 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
 
 void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint8_t* data, uint32_t size, bool lastFrame)
 {
-    struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
-    h2x_frame_init(frame);
-    frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
-    frame->size = MAX_RECV_FRAME_SIZE;
-    h2x_frame_set_stream_identifier(frame, stream_id);
-    h2x_frame_set_type(frame, H2X_DATA);
-
     uint32_t data_written_size = 0;
 
-    while(data_written_size < size)
-    {
+    do {
+        struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
+        h2x_frame_init(frame);
         uint32_t to_write = min(size, (uint32_t)(MAX_RECV_FRAME_SIZE - FRAME_HEADER_LENGTH));
-        memcpy(frame->raw_data + FRAME_HEADER_LENGTH, data, to_write);
+        uint32_t total_frame_size = to_write + FRAME_HEADER_LENGTH;
+        frame->raw_data = (uint8_t *) malloc(total_frame_size);
+        frame->size = total_frame_size;
+        h2x_frame_set_stream_identifier(frame, stream_id);
+        h2x_frame_set_type(frame, H2X_DATA);
         h2x_frame_set_length(frame, to_write);
-        frame->size = to_write + FRAME_HEADER_LENGTH;
+        h2x_frame_set_flags(frame, 0);
 
+        memcpy(frame->raw_data + FRAME_HEADER_LENGTH, data, to_write);
         data_written_size += to_write;
 
         if(data_written_size == size && lastFrame)
@@ -241,18 +242,26 @@ void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id
         }
 
         h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_OUTBOUND);
-
-        if(data_written_size < size)
-        {
-            frame = (struct h2x_frame*) malloc(sizeof(struct h2x_frame));
-            h2x_frame_init(frame);
-            frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
-            frame->size = MAX_RECV_FRAME_SIZE;
-            h2x_frame_set_type(frame, H2X_DATA);
-            h2x_frame_set_stream_identifier(frame, stream_id);
-        }
-    }
+    } while(data_written_size < size);
 }
+
+void h2x_push_rst_stream(struct h2x_connection* connection, uint32_t stream_id, h2x_connection_error error) {
+
+    struct h2x_frame* frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
+    h2x_frame_init(frame);
+    uint32_t to_write = FRAME_HEADER_LENGTH + sizeof(uint32_t);
+    uint32_t total_frame_size = to_write + FRAME_HEADER_LENGTH;
+    frame->raw_data = (uint8_t *) malloc(total_frame_size);
+    frame->size = total_frame_size;
+    h2x_frame_set_stream_identifier(frame, stream_id);
+    h2x_frame_set_type(frame, H2X_RST_STREAM);
+    h2x_frame_set_length(frame, to_write);
+    uint32_t error_code = error;
+    h2x_set_integer_as_big_endian(h2x_frame_get_payload(frame), error_code, sizeof(uint32_t));
+
+    h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_OUTBOUND);
+}
+
 
 struct h2x_frame *h2x_connection_pop_frame(struct h2x_connection *connection) {
     return h2x_frame_list_pop(&connection->outgoing_frames);
@@ -297,7 +306,7 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection *connection, h2
         return;
     }
 
-    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Adding connection %d to chain %d\n", connection->fd, (int) chain);
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Adding connection %d to chain %s", connection->fd, h2x_intrusive_chain_type_to_string(chain));
 
     struct h2x_thread* thread = connection->owner;
 
@@ -317,7 +326,7 @@ void h2x_connection_add_to_intrusive_chain(struct h2x_connection *connection, h2
 
 void h2x_connection_remove_from_intrusive_chain(struct h2x_connection** connection_ref, h2x_intrusive_chain_type chain)
 {
-    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Removing connection %d from chain %d\n", (*connection_ref)->fd, (int) chain);
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Removing connection %d from chain %s", (*connection_ref)->fd, h2x_intrusive_chain_type_to_string(chain));
 
     struct h2x_connection* connection = *connection_ref;
 
@@ -351,6 +360,7 @@ void h2x_connection_pump_outbound_frame(struct h2x_connection *connection) {
 
 void h2x_connection_process_inbound_frame(struct h2x_connection* connection, struct h2x_frame* frame) {
     h2x_frame_type frame_type = h2x_frame_get_type(frame);
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Processing inbound frame of type %s", h2x_frame_type_to_string(frame_type))
     uint32_t stream_id = h2x_frame_get_stream_identifier(frame);
     uint8_t frame_flags = h2x_frame_get_flags(frame);
     h2x_connection_error error = H2X_NO_ERROR;
@@ -377,6 +387,8 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
         }
     }
 
+    h2x_connection_error(*h2x_process_frame)(struct h2x_connection* connection, struct h2x_frame* frame, struct h2x_stream* stream) = NULL;
+
     connection->last_seen_frame_type = frame_type;
     connection->last_seen_stream_id = stream_id;
 
@@ -385,11 +397,11 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
             case H2X_IDLE:
                 switch (frame_type) {
                     case H2X_PUSH_PROMISE:
-                        error = h2x_connection_handle_inbound_push_promise(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_push_promise;
                         next_state = H2X_RESERVED_REMOTE;
                         break;
                     case H2X_HEADERS:
-                        error = h2x_connection_handle_inbound_header(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_header;
                         next_state = H2X_OPEN;
                         break;
                     default:
@@ -400,14 +412,14 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
             case H2X_RESERVED_REMOTE:
                 switch (frame_type) {
                     case H2X_HEADERS:
-                        error = h2x_connection_handle_inbound_header(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_header;
                         next_state = H2X_HALF_CLOSED_LOCAL;
                         break;
                     case H2X_PRIORITY:
-                        error = h2x_connection_handle_inbound_stream_priority(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_priority;
                         break;
                     case H2X_RST_STREAM:
-                        error = h2x_connection_handle_inbound_stream_closed(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_closed;
                         next_state = H2X_CLOSED;
                         break;
                     default:
@@ -418,20 +430,20 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
             case H2X_OPEN:
                 switch (frame_type) {
                     case H2X_RST_STREAM:
-                        error = h2x_connection_handle_inbound_stream_closed(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_closed;
                         next_state = H2X_CLOSED;
                         break;
                     case H2X_HEADERS:
-                        error = h2x_connection_handle_inbound_header(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_header;
                         break;
                     case H2X_DATA:
-                        error = h2x_connection_handle_inbound_stream_data(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_data;
                         break;
                     case H2X_WINDOW_UPDATE:
-                        error = h2x_connection_handle_inbound_stream_window_update(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_window_update;
                         break;
                     case H2X_PRIORITY:
-                        error = h2x_connection_handle_inbound_stream_priority(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_priority;
                         break;
                     default:
                         break;
@@ -444,14 +456,14 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
             case H2X_HALF_CLOSED_REMOTE:
                 switch (frame_type) {
                     case H2X_RST_STREAM:
-                        error = h2x_connection_handle_inbound_stream_closed(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_closed;
                         next_state = H2X_CLOSED;
                         break;
                     case H2X_WINDOW_UPDATE:
-                        error = h2x_connection_handle_inbound_stream_window_update(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_window_update;
                         break;
                     case H2X_PRIORITY:
-                        error = h2x_connection_handle_inbound_stream_priority(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_priority;
                         break;
                     default:
                         error = H2X_STREAM_CLOSED;
@@ -461,20 +473,20 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
             case H2X_HALF_CLOSED_LOCAL:
                 switch (frame_type) {
                     case H2X_RST_STREAM:
-                        error = h2x_connection_handle_inbound_stream_closed(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_closed;
                         next_state = H2X_CLOSED;
                         break;
                     case H2X_WINDOW_UPDATE:
-                        error = h2x_connection_handle_inbound_stream_window_update(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_window_update;
                         break;
                     case H2X_PRIORITY:
-                        error = h2x_connection_handle_inbound_stream_priority(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_priority;
                         break;
                     case H2X_DATA:
-                        error = h2x_connection_handle_inbound_stream_data(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_stream_data;
                         break;
                     case H2X_HEADERS:
-                        error = h2x_connection_handle_inbound_header(connection, frame, stream);
+                        h2x_process_frame = h2x_connection_handle_inbound_header;
                         break;
                     default:
                         error = H2X_PROTOCOL_ERROR;
@@ -483,7 +495,7 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
                 break;
             case H2X_CLOSED:
                 if (frame_type == H2X_PRIORITY) {
-                    error = h2x_connection_handle_inbound_stream_priority(connection, frame, stream);
+                    h2x_process_frame = h2x_connection_handle_inbound_stream_priority;
                     break;
                 } else {
                     error = H2X_STREAM_CLOSED;
@@ -497,14 +509,25 @@ void h2x_connection_process_inbound_frame(struct h2x_connection* connection, str
 
     if(!error) {
         h2x_stream_set_state(stream, next_state);
-    } else {
+    }
+
+    if(h2x_process_frame && !error) {
+        error = h2x_process_frame(connection, frame, stream);
+    }
+
+    if(error) {
         h2x_stream_set_state(stream, H2X_CLOSED);
         h2x_connection_handle_inbound_stream_error(connection, frame, stream, error);
+        h2x_push_rst_stream(connection, stream_id, error);
     }
+
+    h2x_frame_cleanup(frame);
+    free(frame);
 }
 
 void h2x_connection_process_outbound_frame(struct h2x_connection *connection, struct h2x_frame *frame) {
     h2x_frame_type frame_type = h2x_frame_get_type(frame);
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Processing outbound frame of type %s", h2x_frame_type_to_string(frame_type))
     uint32_t stream_id = h2x_frame_get_stream_identifier(frame);
     uint8_t frame_flags = h2x_frame_get_flags(frame);
     //h2x_connection_error error = H2X_NO_ERROR;
@@ -561,7 +584,7 @@ void h2x_connection_process_outbound_frame(struct h2x_connection *connection, st
             break;
         case H2X_OPEN:
             if(frame_flags & H2X_END_STREAM) {
-                next_state = H2X_HALF_CLOSED_REMOTE;
+                next_state = H2X_HALF_CLOSED_LOCAL;
             }
             break;
         case H2X_HALF_CLOSED_LOCAL:
@@ -640,7 +663,8 @@ void parse_header_frames_and_trigger_callback(struct h2x_connection* connection,
             if(delimiter_index && line_end_index) {
                 char* name = (char*)malloc((delimiter_index - start_mark / sizeof(char)) + 1);
                 char* value = (char*)malloc((line_end_index - delimiter_index / sizeof(char)) + 1);
-
+                name[(delimiter_index - start_mark)/sizeof(char)] = 0;
+                value[(line_end_index - delimiter_index)/sizeof(char)] = 0;
                 memcpy(name, payload + start_mark, delimiter_index - start_mark);
                 memcpy(value, payload + delimiter_index + 1, line_end_index - delimiter_index - 1);
                 start_mark = line_end_index + 2;

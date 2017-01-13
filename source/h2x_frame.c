@@ -29,7 +29,7 @@ void h2x_frame_cleanup(struct h2x_frame* frame)
 uint32_t h2x_frame_get_length(struct h2x_frame* frame)
 {
     uint32_t frame_length = 0;
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
 
     frame_length |= frame->raw_data[0];
     frame_length <<= SHIFT_TWO_BYTES;
@@ -42,7 +42,7 @@ uint32_t h2x_frame_get_length(struct h2x_frame* frame)
 
 void h2x_frame_set_length(struct h2x_frame* frame, uint32_t length)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     assert(length <= frame->size - FRAME_HEADER_LENGTH);
 
     uint8_t current_type_value = frame->raw_data[3];
@@ -52,13 +52,13 @@ void h2x_frame_set_length(struct h2x_frame* frame, uint32_t length)
 
 uint8_t* h2x_frame_get_payload(struct h2x_frame* frame)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     return frame->raw_data + FRAME_HEADER_LENGTH;
 }
 
 void h2x_frame_set_payload(struct h2x_frame* frame, uint8_t* payload, uint32_t length)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     assert(length <= frame->size - FRAME_HEADER_LENGTH);
 
     h2x_frame_set_length(frame, length);
@@ -68,7 +68,7 @@ void h2x_frame_set_payload(struct h2x_frame* frame, uint8_t* payload, uint32_t l
 uint32_t h2x_frame_get_stream_identifier(struct h2x_frame* frame)
 {
     uint32_t stream_id = 0;
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
 
     stream_id |= frame->raw_data[5];
     stream_id <<= SHIFT_THREE_BYTES;
@@ -84,7 +84,7 @@ uint32_t h2x_frame_get_stream_identifier(struct h2x_frame* frame)
 
 void h2x_frame_set_stream_identifier(struct h2x_frame* frame, uint32_t stream_id)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
 
     h2x_set_integer_as_big_endian(frame->raw_data + 5, stream_id, sizeof(uint32_t));
     frame->raw_data[5] &= ~R_MASK;
@@ -92,32 +92,32 @@ void h2x_frame_set_stream_identifier(struct h2x_frame* frame, uint32_t stream_id
 
 uint8_t h2x_frame_get_flags(struct h2x_frame* frame)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     return frame->raw_data[4];
 }
 
 void h2x_frame_set_flags(struct h2x_frame* frame, uint8_t flags)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     frame->raw_data[4] = flags;
 }
 
 h2x_frame_type h2x_frame_get_type(struct h2x_frame* frame)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     return (h2x_frame_type)frame->raw_data[3];
 }
 
 void h2x_frame_set_type(struct h2x_frame* frame, h2x_frame_type type)
 {
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
     frame->raw_data[3] = type;
 }
 
 uint8_t h2x_frame_get_r(struct h2x_frame* frame)
 {
     uint8_t r = 0;
-    assert(frame->size > FRAME_HEADER_LENGTH);
+    assert(frame->size >= FRAME_HEADER_LENGTH);
 
     r = frame->raw_data[5] & R_MASK;
     r >>= SHIFT_SEVEN_BITS;

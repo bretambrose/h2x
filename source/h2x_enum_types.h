@@ -88,4 +88,8 @@ char* h2x_log_level_to_string(h2x_log_level log_level);
 h2x_log_level string_to_h2x_log_level(char* log_level_string);
 h2x_log_dest string_to_h2x_log_dest(char* log_dest_string);
 
+char* h2x_stream_state_to_string(h2x_stream_state state);
+char* h2x_intrusive_chain_type_to_string(h2x_intrusive_chain_type chain_type);
+char* h2x_frame_type_to_string(h2x_frame_type frame_type);
+
 #endif // H2X_ENUM_TYPES_H

@@ -42,6 +42,32 @@ static int handle_connect_command(int argc, char** argv, void* context)
     return 0;
 }
 
+void response_header_callback(struct h2x_connection* connection, struct h2x_header_list* headers, uint32_t stream_id, void* user_data)
+{
+    h2x_header_reset_iter(headers);
+
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Received response headers on stream %u, connection %d:", stream_id, connection->fd)
+    struct h2x_header* header = h2x_header_next(headers);
+    while(header)
+    {
+        H2X_LOG(H2X_LOG_LEVEL_INFO, " %s = %s", header->name, header->value)
+        header = h2x_header_next(headers);
+    }
+}
+
+void response_body_callback(struct h2x_connection* connection, uint8_t* data, uint32_t length, uint32_t stream_id, bool lastFrame, void* user_data)
+{
+    H2X_LOG(H2X_LOG_LEVEL_INFO, "Received body data on stream %u, connection %d:", stream_id, connection->fd)
+
+    char *raw_data_string = malloc(length + 1);
+    raw_data_string[length] = 0;
+    memcpy(raw_data_string, data, length);
+
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Raw data: %s", raw_data_string);
+
+    free(raw_data_string);
+}
+
 struct fake_request
 {
     FILE* body_file;
@@ -84,6 +110,8 @@ static int handle_request_command(int argc, char** argv, void* context)
 
     h2x_connection_set_stream_data_needed_callback(connection, fake_request_on_stream_data_needed);
     h2x_connection_set_stream_error_callback(connection, fake_request_stream_error_callback);
+    h2x_connection_set_stream_headers_receieved_callback(connection, response_header_callback);
+    h2x_connection_set_stream_body_receieved_callback(connection, response_body_callback);
 
     struct fake_request *user_data = malloc(sizeof(struct fake_request));
     user_data->body_file = fopen(argv[3], "r");
@@ -192,7 +220,7 @@ void h2x_do_client(struct h2x_options* options)
             int event_mask = events[i].events;
             if((event_mask & EPOLLERR) || (event_mask & EPOLLHUP) || (!(event_mask & (EPOLLIN | EPOLLPRI))))
             {
-                H2X_LOG(H2X_LOG_LEVEL_ERROR, "epoll error. events=%u\n", events[i].events);
+                H2X_LOG(H2X_LOG_LEVEL_ERROR, "epoll error. events=%u", events[i].events);
                 goto CLEANUP;
             }
 

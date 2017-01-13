@@ -1,6 +1,8 @@
 
 #include <h2x_stream.h>
 #include <h2x_frame.h>
+#include <h2x_log.h>
+
 #include <stddef.h>
 
 void h2x_stream_init(struct h2x_stream* stream)
@@ -25,5 +27,7 @@ void h2x_stream_append_header_fragment(struct h2x_stream* stream, struct h2x_fra
 
 void h2x_stream_set_state(struct h2x_stream* stream, h2x_stream_state state)
 {
+    h2x_stream_state current_state = stream->state;
     stream->state = state;
+    H2X_LOG(H2X_LOG_LEVEL_DEBUG, "stream %u state transition %s -> %s", stream->stream_identifier, h2x_stream_state_to_string(current_state), h2x_stream_state_to_string(state));
 }
