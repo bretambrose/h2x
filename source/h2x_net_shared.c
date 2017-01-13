@@ -258,12 +258,14 @@ void process_pending_write_chain(struct h2x_thread* thread)
 
             ssize_t count = write(connection->fd, connection->current_outbound_frame->raw_data, write_size);
 
-            is_write_finished = count == write_size;
             if(count >= 0)
             {
                 H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d wrote %u bytes", connection->fd, (uint32_t)count);
                 connection->current_outbound_frame_read_position += count;
                 connection->bytes_written += count;
+
+                h2x_connection_pump_outbound_frame(connection);
+                is_write_finished = connection->current_outbound_frame == NULL;
             }
             else
             {

@@ -160,7 +160,7 @@ struct h2x_frame* h2x_frame_list_top(struct h2x_frame_list* list)
 
 struct h2x_frame* h2x_frame_list_pop(struct h2x_frame_list* list)
 {
-    struct h2x_frame_list_node* cur_head = list->tail;
+    struct h2x_frame_list_node* cur_head = list->head;
 
     if(cur_head)
     {
