@@ -170,6 +170,11 @@ void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, stru
         stream = (struct h2x_stream *) malloc(sizeof(struct h2x_stream));
         h2x_stream_init(stream);
         stream->stream_identifier = h2x_frame_get_stream_identifier(frame);
+
+        if(connection->mode == H2X_MODE_SERVER) {
+            stream->user_data = connection->user_data;
+        }
+
         h2x_hash_table_add(&connection->streams, stream);
     }
 
@@ -220,7 +225,7 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
         {
             h2x_frame_set_length(frame, headers_written_size);
             frame->size = headers_written_size + FRAME_HEADER_LENGTH;
-            h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_INBOUND);
+            h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_OUTBOUND);
             headers_written_size = 0;
             frame = (struct h2x_frame*)malloc(sizeof(struct h2x_frame));
             h2x_frame_init(frame);
@@ -245,7 +250,7 @@ void h2x_push_headers(struct h2x_connection* connection, uint32_t stream_id, str
     h2x_frame_set_flags(frame, H2X_END_HEADERS);
     frame->size = headers_written_size + FRAME_HEADER_LENGTH;
 
-    h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_INBOUND);
+    h2x_connection_push_frame_to_stream(connection, frame, H2X_STREAM_OUTBOUND);
 }
 
 void h2x_push_data_segment(struct h2x_connection* connection, uint32_t stream_id, uint8_t* data, uint32_t size, bool lastFrame)
