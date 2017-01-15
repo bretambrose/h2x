@@ -14,6 +14,8 @@ void h2x_socket_state_init(struct h2x_socket_state* socket_state)
     socket_state->last_event_mask = 0;
     socket_state->has_connected = false;
     socket_state->has_remote_hungup = false;
+    socket_state->bytes_read = 0;       // does not include tls handshake
+    socket_state->bytes_written = 0;    // does not include tls handshake
 }
 
 
@@ -40,14 +42,13 @@ static uint32_t stream_hash_function(void *arg) {
 void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *owner, int fd, h2x_mode mode) {
     connection->owner = owner;
     connection->fd = fd;
+    connection->state = H2X_CS_NEW;
     h2x_socket_state_init(&connection->socket_state);
     connection->mode = mode;
     connection->current_frame_size = 0;
-    connection->state = H2X_NOT_ON_FRAME;
+    connection->read_frame_state = H2X_RFS_NOT_ON_FRAME;
     connection->current_outbound_frame = NULL;
     connection->current_outbound_frame_read_position = 0;
-    connection->bytes_written = 0;
-    connection->bytes_read = 0;
     connection->next_new_connection = NULL;
 
     for (uint32_t i = 0; i < H2X_ICT_COUNT; ++i) {
@@ -81,8 +82,8 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
     uint32_t amount_to_read = 0;
 
     do {
-        switch (connection->state) {
-            case H2X_NOT_ON_FRAME:
+        switch (connection->read_frame_state) {
+            case H2X_RFS_NOT_ON_FRAME:
                 connection->current_frame_read = 0;
                 connection->current_frame_size = 0;
                 connection->current_frame = (struct h2x_frame *) malloc(sizeof(struct h2x_frame));
@@ -90,10 +91,10 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
 
                 connection->current_frame->raw_data = (uint8_t *) malloc(MAX_RECV_FRAME_SIZE);
                 connection->current_frame->size = MAX_RECV_FRAME_SIZE;
-                connection->state = H2X_ON_HEADER;
+                connection->read_frame_state = H2X_RFS_ON_HEADER;
                 break;
 
-            case H2X_ON_HEADER:
+            case H2X_RFS_ON_HEADER:
                 amount_to_read = min(data_length - read, FRAME_HEADER_LENGTH - connection->current_frame_read);
                 memcpy(connection->current_frame->raw_data + connection->current_frame_read, data + read,
                        amount_to_read);
@@ -101,16 +102,16 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
                 read += amount_to_read;
 
                 if (amount_to_read >= FRAME_HEADER_LENGTH) {
-                    connection->state = H2X_HEADER_FILLED;
+                    connection->read_frame_state = H2X_RFS_HEADER_FILLED;
                 }
                 break;
 
-            case H2X_HEADER_FILLED:
+            case H2X_RFS_HEADER_FILLED:
                 connection->current_frame_size = h2x_frame_get_length(connection->current_frame) + FRAME_HEADER_LENGTH;
-                connection->state = H2X_ON_DATA;
+                connection->read_frame_state = H2X_RFS_ON_DATA;
                 break;
 
-            case H2X_ON_DATA:
+            case H2X_RFS_ON_DATA:
                 amount_to_read = min(data_length - read, connection->current_frame_size -
                                                          connection->current_frame_read);
                 memcpy(connection->current_frame->raw_data + connection->current_frame_read, data + read,
@@ -120,11 +121,11 @@ void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t 
 
                 if (connection->current_frame_read == connection->current_frame_size) {
                     h2x_connection_push_frame_to_stream(connection, connection->current_frame, H2X_STREAM_INBOUND);
-                    connection->state = H2X_NOT_ON_FRAME;
+                    connection->read_frame_state = H2X_RFS_NOT_ON_FRAME;
                 }
                 break;
         }
-    } while (read < data_length || connection->state != H2X_NOT_ON_FRAME);
+    } while (read < data_length || connection->read_frame_state != H2X_RFS_NOT_ON_FRAME);
 }
 
 void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, struct h2x_frame *frame, h2x_stream_push_dir push_dir) {
@@ -742,3 +743,10 @@ void h2x_connection_add_request(struct h2x_connection* connection, struct h2x_re
 {
     h2x_thread_add_request(connection->owner, request);
 }
+
+void h2x_connection_begin_close(struct h2x_connection* connection)
+{
+    h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+    connection->state = H2X_CS_CLOSING;
+}
+

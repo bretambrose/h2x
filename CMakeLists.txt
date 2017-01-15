@@ -23,7 +23,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/source ${S2N_INCLUDE_PATH})
 
 add_executable(h2x ${H2X_SOURCE} source/h2x_frame.h source/h2x_stream.h)
 
-target_compile_options(h2x PRIVATE -std=gnu99 -g -Wall -Werror -Wextra -Wno-unused-parameter)
+target_compile_options(h2x PRIVATE -std=gnu11 -g -Wall -Werror -Wextra -Wno-unused-parameter)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(h2x PRIVATE -pedantic -Wno-gnu-statement-expression)
 endif()

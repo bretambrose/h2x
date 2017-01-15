@@ -2,7 +2,6 @@
 
 #include <h2x_connection.h>
 #include <h2x_log.h>
-#include <h2x_request.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -17,7 +16,7 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
     thread->connection_count = 0;
     thread->epoll_fd = 0;
     thread->new_connections = NULL;
-    thread->should_quit = false;
+    atomic_init(&thread->should_quit, false);
     thread->new_requests = NULL;
     thread->finished_connection_lock = NULL;
     thread->finished_connections = NULL;
@@ -33,17 +32,11 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
         goto CLEANUP_THREAD;
     }
 
-    if(pthread_mutex_init(&thread->quit_lock, NULL))
-    {
-        H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to initialize thread %u quit mutex, errno = %d", thread_id, (int) errno);
-        goto CLEANUP_MUTEX1;
-    }
-
     pthread_attr_t thread_attr;
     if(pthread_attr_init(&thread_attr))
     {
         H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to initialize thread %u thread attributes, errno = %d", thread_id, (int) errno);
-        goto CLEANUP_MUTEX2;
+        goto CLEANUP_MUTEX;
     }
 
     if(pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_JOINABLE))
@@ -63,10 +56,7 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
 CLEANUP_THREAD_ATTR:
     pthread_attr_destroy(&thread_attr);
 
-CLEANUP_MUTEX2:
-    pthread_mutex_destroy(&thread->quit_lock);
-
-CLEANUP_MUTEX1:
+CLEANUP_MUTEX:
     pthread_mutex_destroy(&thread->new_data_lock);
 
 CLEANUP_THREAD:
@@ -94,7 +84,6 @@ void h2x_thread_cleanup(struct h2x_thread* thread)
      */
     assert(thread->new_connections == NULL);
 
-    pthread_mutex_destroy(&thread->quit_lock);
     pthread_mutex_destroy(&thread->new_data_lock);
 
     free(thread);
@@ -145,15 +134,8 @@ int h2x_thread_poll_new_requests_and_connections(struct h2x_thread* thread, stru
 
 int h2x_thread_poll_quit_state(struct h2x_thread* thread, bool* quit_state)
 {
-    if(pthread_mutex_lock(&thread->quit_lock))
-    {
-        H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to lock thread %u in order to poll quit state, errno = %d", thread->thread_id, (int) errno);
-        return -1;
-    }
+    *quit_state = atomic_load(&thread->should_quit);
 
-    *quit_state = thread->should_quit;
-
-    pthread_mutex_unlock(&thread->quit_lock);
     return 0;
 }
 

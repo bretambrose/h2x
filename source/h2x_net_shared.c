@@ -210,7 +210,7 @@ void process_pending_read_chain(struct h2x_thread* thread)
         {
             H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Received %u bytes on connection %d", (uint32_t) count, connection->fd);
             h2x_connection_on_data_received(connection, read_buffer, count);
-            connection->bytes_read += count;
+            connection->socket_state.bytes_read += count;
         }
 
         if(count < READ_BUFFER_SIZE)
@@ -220,7 +220,7 @@ void process_pending_read_chain(struct h2x_thread* thread)
 
         if(should_close_connection)
         {
-            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+            h2x_connection_begin_close(connection);
         }
 
         if(is_read_finished || should_close_connection)
@@ -262,7 +262,7 @@ void process_pending_write_chain(struct h2x_thread* thread)
             {
                 H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Connection %d wrote %u bytes", connection->fd, (uint32_t)count);
                 connection->current_outbound_frame_read_position += count;
-                connection->bytes_written += count;
+                connection->socket_state.bytes_written += count;
 
                 h2x_connection_pump_outbound_frame(connection);
                 is_write_finished = connection->current_outbound_frame == NULL;
@@ -289,7 +289,7 @@ void process_pending_write_chain(struct h2x_thread* thread)
 
         if(should_close_connection)
         {
-            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+            h2x_connection_begin_close(connection);
         }
 
         if(is_write_finished || should_close_connection || !should_attempt_to_write)
@@ -310,7 +310,7 @@ void process_new_connections(struct h2x_connection* connections, int epoll_fd, s
     while(connection)
     {
         struct h2x_thread* thread = connection->owner;
-
+        connection->state = H2X_CS_READY;
         bool should_close_connection = false;
         if(!done)
         {
@@ -338,7 +338,7 @@ void process_new_connections(struct h2x_connection* connections, int epoll_fd, s
 
         if(should_close_connection)
         {
-            h2x_connection_add_to_intrusive_chain(connection, H2X_ICT_PENDING_CLOSE);
+            h2x_connection_begin_close(connection);
         }
 
         struct h2x_connection* next_connection = connection->next_new_connection;

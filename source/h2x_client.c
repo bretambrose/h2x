@@ -4,21 +4,15 @@
 #include <h2x_command.h>
 #include <h2x_connection.h>
 #include <h2x_connection_manager.h>
-#include <h2x_headers.h>
 #include <h2x_log.h>
 #include <h2x_net_shared.h>
 #include <h2x_options.h>
-#include <h2x_request.h>
 #include <h2x_thread.h>
 
-#include <errno.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/epoll.h>
-#include <sys/socket.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #define CLIENT_EVENT_COUNT 1

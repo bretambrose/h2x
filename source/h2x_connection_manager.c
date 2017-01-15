@@ -61,9 +61,7 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
 
         H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Sending quit signal to thread %u", thread->thread_id);
 
-        pthread_mutex_lock(&thread->quit_lock);
-        thread->should_quit = true;
-        pthread_mutex_unlock(&thread->quit_lock);
+        atomic_store(&thread->should_quit, true);
 
         thread_node = thread_node->next;
     }

@@ -5,6 +5,7 @@
 #include <h2x_enum_types.h>
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -24,8 +25,7 @@ struct h2x_thread {
     struct h2x_connection* new_connections;  // shared state
     struct h2x_request* new_requests;
 
-    pthread_mutex_t quit_lock;               // lock for quit flag
-    bool should_quit;                        // shared state
+    atomic_bool should_quit;                        // shared state
 
     pthread_mutex_t* finished_connection_lock;  // lock for global shared state between all processing threads and connection manager
     struct h2x_connection** finished_connections;

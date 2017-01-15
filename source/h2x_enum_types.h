@@ -14,11 +14,11 @@ typedef enum {
 } h2x_security_protocol_type;
 
 typedef enum {
-    H2X_NOT_ON_FRAME,
-    H2X_ON_HEADER,
-    H2X_HEADER_FILLED,
-    H2X_ON_DATA
-} h2x_connection_state;
+    H2X_RFS_NOT_ON_FRAME,
+    H2X_RFS_ON_HEADER,
+    H2X_RFS_HEADER_FILLED,
+    H2X_RFS_ON_DATA
+} h2x_read_frame_state;
 
 typedef enum  {
     H2X_IDLE,
@@ -83,6 +83,15 @@ typedef enum {
     H2X_LOG_DEST_STDERR,
     H2X_LOG_DEST_FILE
 } h2x_log_dest;
+
+
+typedef enum {
+    H2X_CS_NEW,
+    H2X_CS_PLACEHOLDER,
+    H2X_CS_TLS_HANDSHAKE,
+    H2X_CS_READY,
+    H2X_CS_CLOSING
+} h2x_connection_state;
 
 char* h2x_log_level_to_string(h2x_log_level log_level);
 h2x_log_level string_to_h2x_log_level(char* log_level_string);
