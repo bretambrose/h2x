@@ -14,15 +14,15 @@ struct h2x_options {
     uint16_t port;
     uint32_t threads;
     uint32_t connections_per_thread;
-    bool non_interactive;
-    bool protocol_debug;
 
     h2x_log_level log_level;
     h2x_log_dest log_dest;
     char *log_filename;
     bool sync_logging;
+
 } h2x_options;
 
+struct h2x_options* h2x_options_copy(struct h2x_options* source);
 int h2x_options_init(struct h2x_options* options, int argc, char** argv);
 void h2x_options_cleanup(struct h2x_options* options);
 

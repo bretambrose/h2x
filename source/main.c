@@ -1,6 +1,7 @@
 #include <s2n.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <h2x_buffer.h>
 #include <h2x_client.h>
@@ -36,6 +37,8 @@ int main(int argc, char **argv)
     }
 
     s2n_cleanup();
+
+    h2x_logging_cleanup();
 
     h2x_options_cleanup(&options);
 

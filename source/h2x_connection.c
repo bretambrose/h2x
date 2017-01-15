@@ -1,6 +1,9 @@
-#include <h2x_stream.h>
+
 #include <h2x_connection.h>
+
 #include <h2x_log.h>
+#include <h2x_options.h>
+#include <h2x_stream.h>
 #include <h2x_thread.h>
 
 #include <assert.h>
@@ -39,23 +42,22 @@ static uint32_t stream_hash_function(void *arg) {
     }
 }*/
 
-void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *owner, int fd, h2x_mode mode) {
+void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *owner, int fd) {
     connection->owner = owner;
-    connection->fd = fd;
     connection->state = H2X_CS_NEW;
-    h2x_socket_state_init(&connection->socket_state);
-    connection->mode = mode;
-    connection->current_frame_size = 0;
-    connection->read_frame_state = H2X_RFS_NOT_ON_FRAME;
-    connection->current_outbound_frame = NULL;
-    connection->current_outbound_frame_read_position = 0;
-    connection->next_new_connection = NULL;
+    connection->fd = fd;
+    connection->queued_request = NULL;
 
+    h2x_socket_state_init(&connection->socket_state);
     for (uint32_t i = 0; i < H2X_ICT_COUNT; ++i) {
         connection->intrusive_chains[i] = NULL;
         connection->in_intrusive_chain[i] = false;
     }
 
+    connection->current_frame_size = 0;
+    connection->read_frame_state = H2X_RFS_NOT_ON_FRAME;
+    connection->current_outbound_frame = NULL;
+    connection->current_outbound_frame_read_position = 0;
     connection->on_stream_headers_received = NULL;
     connection->on_stream_body_received = NULL;
     connection->on_stream_error = NULL;
@@ -64,7 +66,7 @@ void h2x_connection_init(struct h2x_connection *connection, struct h2x_thread *o
     connection->user_data = NULL;
     h2x_frame_list_init(&connection->outgoing_frames);
 
-    if (mode == H2X_MODE_SERVER) {
+    if (owner->options->mode == H2X_MODE_SERVER) {
         connection->next_outgoing_stream_id = 2;
     } else {
         connection->next_outgoing_stream_id = 1;
@@ -136,7 +138,7 @@ void h2x_connection_push_frame_to_stream(struct h2x_connection *connection, stru
         h2x_stream_init(stream);
         stream->stream_identifier = h2x_frame_get_stream_identifier(frame);
 
-        if(connection->mode == H2X_MODE_SERVER) {
+        if(connection->owner->options->mode == H2X_MODE_SERVER) {
             stream->user_data = connection->user_data;
         }
 

@@ -116,7 +116,21 @@ static void release_closed_connections(struct h2x_thread* thread)
     thread->intrusive_chains[H2X_ICT_PENDING_CLOSE] = NULL;
 }
 
-void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_event* events, int event_count)
+void on_new_connection_visible(struct h2x_thread* thread, struct h2x_connection* connection)
+{
+    struct h2x_request* request = connection->queued_request;
+    while(request)
+    {
+        request->next = thread->inprogress_requests;
+        thread->inprogress_requests = request;
+
+        request = request->next;
+    }
+
+    connection->state = H2X_CS_READY;
+}
+
+void process_epoll_events(struct h2x_thread *thread, struct epoll_event* events, int event_count)
 {
     assert(thread->intrusive_chains[H2X_ICT_PENDING_READ] == NULL);
     assert(thread->intrusive_chains[H2X_ICT_PENDING_CLOSE] == NULL);
@@ -127,6 +141,12 @@ void build_pending_read_write_chains(struct h2x_thread *thread, struct epoll_eve
     {
         struct epoll_event* event = events + i;
         struct h2x_connection* connection = event->data.ptr;
+
+        if(connection->state == H2X_CS_NEW)
+        {
+            on_new_connection_visible(thread, connection);
+        }
+
         int event_mask = event->events;
 
         connection->socket_state.last_event_mask = event_mask;
@@ -303,50 +323,6 @@ void process_pending_write_chain(struct h2x_thread* thread)
     }
 }
 
-void process_new_connections(struct h2x_connection* connections, int epoll_fd, struct h2x_hash_table* connection_table, bool done)
-{
-    struct epoll_event event;
-    struct h2x_connection* connection = connections;
-    while(connection)
-    {
-        struct h2x_thread* thread = connection->owner;
-        connection->state = H2X_CS_READY;
-        bool should_close_connection = false;
-        if(!done)
-        {
-            event.data.ptr = connection;
-            // don't need to explicitly subscribe to EPOLLERR and EPOLLHUP
-            event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
-
-            int ret_val = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, connection->fd, &event);
-            if (ret_val == -1)
-            {
-                H2X_LOG(H2X_LOG_LEVEL_INFO, "Unable to register connection %d with thread %u epoll instance", connection->fd, thread->thread_id);
-                should_close_connection = true;
-            }
-            else
-            {
-                H2X_LOG(H2X_LOG_LEVEL_INFO, "Added connection %d to thread %u epoll instance", connection->fd, thread->thread_id);
-                h2x_hash_table_add(connection_table, connection);
-            }
-        }
-        else
-        {
-            H2X_LOG(H2X_LOG_LEVEL_INFO, "Moving new connection %d on thread %u to closed due to quit state", connection->fd, thread->thread_id);
-            should_close_connection = true;
-        }
-
-        if(should_close_connection)
-        {
-            h2x_connection_begin_close(connection);
-        }
-
-        struct h2x_connection* next_connection = connection->next_new_connection;
-        connection->next_new_connection = NULL;
-        connection = next_connection;
-    }
-}
-
 void process_new_requests(struct h2x_request* requests)
 {
     struct h2x_request* request = requests;
@@ -363,8 +339,16 @@ void process_new_requests(struct h2x_request* requests)
 
         struct h2x_request* next_request = request->next;
 
-        request->next = thread->inprogress_requests;
-        thread->inprogress_requests = request;
+        if(connection->state != H2X_CS_READY)
+        {
+            request->next = connection->queued_request;
+            connection->queued_request = request;
+        }
+        else
+        {
+            request->next = thread->inprogress_requests;
+            thread->inprogress_requests = request;
+        }
 
         request = next_request;
     }
@@ -406,14 +390,7 @@ void *h2x_processing_thread_function(void * arg)
 {
     struct h2x_thread* self = arg;
 
-    int epoll_fd = epoll_create1(0);
-    if(epoll_fd == -1)
-    {
-        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create epoll instance");
-        return NULL;
-    }
-
-    h2x_thread_set_epoll_fd(self, epoll_fd);
+    int epoll_fd = self->epoll_fd;
 
     uint32_t max_connections = self->options->connections_per_thread;
     struct epoll_event* events = calloc(max_connections, sizeof(struct epoll_event));
@@ -424,7 +401,7 @@ void *h2x_processing_thread_function(void * arg)
     while(!done)
     {
         int event_count = epoll_wait(epoll_fd, events, max_connections, 0);
-        build_pending_read_write_chains(self, events, event_count);
+        process_epoll_events(self, events, event_count);
 
         while(self->intrusive_chains[H2X_ICT_PENDING_READ] || self->intrusive_chains[H2X_ICT_PENDING_WRITE])
         {
@@ -439,7 +416,6 @@ void *h2x_processing_thread_function(void * arg)
         h2x_thread_poll_quit_state(self, &done);
         h2x_thread_poll_new_requests_and_connections(self, &new_connections, &new_requests);
 
-        process_new_connections(new_connections, epoll_fd, connection_table, done);
         process_new_requests(new_requests);
         process_inprogress_requests(self);
 

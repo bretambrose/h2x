@@ -1,6 +1,5 @@
 #include <h2x_options.h>
 
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,8 +11,6 @@ static void intialize_options_defaults(struct h2x_options* options)
     options->port = 3333;
     options->mode = H2X_MODE_NONE;
     options->security_protocol = H2X_SECURITY_NONE;
-    options->non_interactive = false;
-    options->protocol_debug = false;
     options->log_level = H2X_LOG_LEVEL_DEBUG;
     options->log_dest = H2X_LOG_DEST_STDERR;
     options->log_filename = NULL;
@@ -90,20 +87,6 @@ static int parse_h2x_conn(char** args, struct h2x_options* options)
     return 0;
 }
 
-static int parse_h2x_nointeract(char** args, struct h2x_options* options)
-{
-    options->non_interactive = true;
-
-    return 0;
-}
-
-static int parse_h2x_debug_protocol(char** args, struct h2x_options* options)
-{
-    options->protocol_debug = true;
-
-    return 0;
-}
-
 static int parse_h2x_log_level(char** args, struct h2x_options* options)
 {
     options->log_level = string_to_h2x_log_level(args[1]);
@@ -145,8 +128,6 @@ h2x_option_parser option_parsers[] = {
     { "--port", 1, parse_h2x_port, "(server required) what port to listen for connections on" },
     { "--threads", 1, parse_h2x_threads, "(server) number of threads to process connections on; defaults to 1" },
     { "--conn", 1, parse_h2x_conn, "(server) maximum number of connections per thread; defaults to 1000" },
-    { "--debug_protocol", 0, parse_h2x_debug_protocol, "enables all protocol debug (pd) commands" },
-    { "--nointeract", 0, parse_h2x_nointeract, "(server) disable interactive command input; useful for debugging" },
     { "--log_level", 1, parse_h2x_log_level, "sets the logging level for the process [Off | Fatal | Error | Warn | Info | Debug | Trace]" },
     { "--log_dest", 1, parse_h2x_log_dest, "sets the logging destination for the process [None | Stderr | File]" },
     { "--log_filename", 1, parse_h2x_log_filename, "when logging to a file, sets the filename (defaults to h2x.log)" },
@@ -155,9 +136,20 @@ h2x_option_parser option_parsers[] = {
 
 #define H2X_OPTION_COUNT (sizeof(option_parsers) / sizeof(h2x_option_parser))
 
+struct h2x_options* h2x_options_copy(struct h2x_options* source)
+{
+    struct h2x_options* options = malloc(sizeof(struct h2x_options));
+    *options = *source;
+    if(source->log_filename)
+    {
+        options->log_filename = strdup(source->log_filename);
+    }
+
+    return options;
+}
+
 int h2x_options_init(struct h2x_options* options, int argc, char** argv)
 {
-    memset(options, 0, sizeof(h2x_options));
     intialize_options_defaults(options);
 
     int arg_index = 1;

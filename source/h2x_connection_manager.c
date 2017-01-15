@@ -15,9 +15,10 @@
 
 int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connection_manager* connection_manager)
 {
-    connection_manager->options = options;
+    connection_manager->options = h2x_options_copy(options);
     connection_manager->finished_connections = NULL;
-    connection_manager->next_thread_id = 1;
+    connection_manager->next_thread_id = 0;
+    connection_manager->connection_counts = NULL;
 
     if(pthread_mutex_init(&connection_manager->finished_connection_lock, NULL))
     {
@@ -40,6 +41,8 @@ int h2x_connection_manager_init(struct h2x_options *options, struct h2x_connecti
 
         H2X_LOG(H2X_LOG_LEVEL_DEBUG, "Adding thread %u to connection manager", thread->thread_id);
     }
+
+    connection_manager->connection_counts = calloc(options->threads, sizeof(uint32_t));
 
     return 0;
 }
@@ -98,6 +101,11 @@ int h2x_connection_manager_cleanup(struct h2x_connection_manager* connection_man
 
     pthread_mutex_destroy(&connection_manager->finished_connection_lock);
 
+    h2x_options_cleanup(connection_manager->options);
+
+    free(connection_manager->options);
+    free(connection_manager->connection_counts);
+
     return 0;
 }
 
@@ -109,7 +117,7 @@ struct h2x_connection* h2x_connection_manager_add_connection(struct h2x_connecti
     while (thread_node)
     {
         struct h2x_thread *thread = thread_node->thread;
-        uint32_t thread_connection_count = thread->connection_count;
+        uint32_t thread_connection_count = connection_manager->connection_counts[thread->thread_id];
         H2X_LOG(H2X_LOG_LEVEL_TRACE, "Considering adding connection %d to thread %u with %u(%u) connections", fd, thread->thread_id, thread_connection_count, thread->options->connections_per_thread);
         if (thread_connection_count <= lowest_count &&
             thread_connection_count < thread->options->connections_per_thread)
@@ -129,17 +137,20 @@ struct h2x_connection* h2x_connection_manager_add_connection(struct h2x_connecti
     }
 
     struct h2x_connection* new_connection = malloc(sizeof(struct h2x_connection));
-    h2x_connection_init(new_connection, add_thread, fd, add_thread->options->mode);
+    h2x_connection_init(new_connection, add_thread, fd);
 
     if (h2x_thread_add_connection(add_thread, new_connection))
     {
         H2X_LOG(H2X_LOG_LEVEL_INFO, "Something went very wrong in h2x_thread_add_connection");
         h2x_connection_cleanup(new_connection); // TODO connection cleanup is F'ed up
         close(fd);
+        free(new_connection);
+        new_connection = NULL;
     }
     else
     {
         H2X_LOG(H2X_LOG_LEVEL_INFO, "Added connection %d to thread %u", fd, add_thread->thread_id);
+        connection_manager->connection_counts[add_thread->thread_id]++;
     }
 
     return new_connection;
@@ -175,19 +186,6 @@ void h2x_connection_manager_pump_closed_connections(struct h2x_connection_manage
         free(connection);
 
         connection = next_connection;
-    }
-}
-
-void h2x_connection_manager_list_threads(struct h2x_connection_manager* manager)
-{
-    struct h2x_thread_node* thread_node = manager->processing_threads;
-    while(thread_node)
-    {
-        struct h2x_thread* thread = thread_node->thread;
-
-        fprintf(stderr, "thread %u - %u connections\n", thread->thread_id, thread->connection_count);
-
-        thread_node = thread_node->next;
     }
 }
 

@@ -29,26 +29,11 @@ void h2x_socket_state_init(struct h2x_socket_state* socket_state);
 
 struct h2x_connection {
     struct h2x_thread* owner;
-    int fd;
     h2x_connection_state state;
+    int fd;
+    struct h2x_request* queued_request;
+
     struct h2x_socket_state socket_state;
-    struct h2x_hash_table streams;
-    h2x_mode mode;
-    uint32_t next_outgoing_stream_id;
-    uint32_t current_frame_size;
-    uint32_t current_frame_read;
-    struct h2x_frame* current_frame;
-    struct h2x_frame_list outgoing_frames;
-    h2x_read_frame_state read_frame_state;
-
-    struct h2x_frame* current_outbound_frame;
-    uint32_t current_outbound_frame_read_position;
-
-    uint32_t last_seen_stream_id;
-    h2x_frame_type last_seen_frame_type;
-
-    struct h2x_connection* next_new_connection;
-
     /*
      Intrusive lists that chain together connections that require read and/or write work.
      We build and interate these chains starting from the epoll_wait return values,
@@ -70,6 +55,20 @@ struct h2x_connection {
      */
     bool in_intrusive_chain[H2X_ICT_COUNT];
 
+    struct h2x_hash_table streams;
+    uint32_t next_outgoing_stream_id;
+    uint32_t current_frame_size;
+    uint32_t current_frame_read;
+    struct h2x_frame* current_frame;
+    struct h2x_frame_list outgoing_frames;
+    h2x_read_frame_state read_frame_state;
+
+    struct h2x_frame* current_outbound_frame;
+    uint32_t current_outbound_frame_read_position;
+
+    uint32_t last_seen_stream_id;
+    h2x_frame_type last_seen_frame_type;
+
     void* user_data;
     void(*on_stream_headers_received)(struct h2x_connection*, struct h2x_header_list* headers, uint32_t stream_id, void*);
     void(*on_stream_body_received)(struct h2x_connection*, uint8_t* data, uint32_t length, uint32_t, bool lastFrame, void*);
@@ -78,7 +77,7 @@ struct h2x_connection {
 
 };
 
-void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* owner, int fd, h2x_mode mode);
+void h2x_connection_init(struct h2x_connection* connection, struct h2x_thread* owner, int fd);
 void h2x_connection_cleanup(struct h2x_connection *connection);
 void h2x_connection_on_data_received(struct h2x_connection *connection, uint8_t* data, uint32_t data_length);
 

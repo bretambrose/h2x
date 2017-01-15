@@ -6,6 +6,8 @@
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <sys/epoll.h>
+#include <unistd.h>
 
 struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_routine)(void *), uint32_t thread_id)
 {
@@ -13,7 +15,6 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
 
     thread->options = options;
     thread->thread_id = thread_id;
-    thread->connection_count = 0;
     thread->epoll_fd = 0;
     thread->new_connections = NULL;
     atomic_init(&thread->should_quit, false);
@@ -26,10 +27,17 @@ struct h2x_thread* h2x_thread_new(struct h2x_options* options, void *(*start_rou
         thread->intrusive_chains[i] = NULL;
     }
 
+    thread->epoll_fd = epoll_create1(0);
+    if(thread->epoll_fd == -1)
+    {
+        H2X_LOG(H2X_LOG_LEVEL_FATAL, "Unable to create epoll instance");
+        goto CLEANUP_THREAD;
+    }
+
     if(pthread_mutex_init(&thread->new_data_lock, NULL))
     {
         H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to initialize thread %u new connections mutex, errno = %d", thread_id, (int) errno);
-        goto CLEANUP_THREAD;
+        goto CLEANUP_EPOLL;
     }
 
     pthread_attr_t thread_attr;
@@ -59,14 +67,13 @@ CLEANUP_THREAD_ATTR:
 CLEANUP_MUTEX:
     pthread_mutex_destroy(&thread->new_data_lock);
 
+CLEANUP_EPOLL:
+    close(thread->epoll_fd);
+
 CLEANUP_THREAD:
     free(thread);
-    return NULL;
-}
 
-void h2x_thread_set_epoll_fd(struct h2x_thread* thread, int epoll_fd)
-{
-    thread->epoll_fd = epoll_fd;
+    return NULL;
 }
 
 void h2x_thread_set_finished_connection_channel(struct h2x_thread* thread,
@@ -96,19 +103,18 @@ int h2x_thread_add_connection(struct h2x_thread* thread, struct h2x_connection *
         return -1;
     }
 
-    if(pthread_mutex_lock(&thread->new_data_lock))
+    struct epoll_event event;
+    event.data.ptr = connection;
+    // don't need to explicitly subscribe to EPOLLERR and EPOLLHUP
+    event.events = EPOLLIN | EPOLLET | EPOLLPRI | EPOLLERR | EPOLLOUT | EPOLLRDHUP | EPOLLHUP;
+
+    int ret_val = epoll_ctl(thread->epoll_fd, EPOLL_CTL_ADD, connection->fd, &event);
+    if (ret_val == -1)
     {
-        H2X_LOG(H2X_LOG_LEVEL_ERROR, "Failed to lock thread %u state in order to add connection %d, errno = %d", thread->thread_id, connection->fd, (int) errno);
+        H2X_LOG(H2X_LOG_LEVEL_INFO, "Unable to register connection %d with thread %u epoll instance", connection->fd, thread->thread_id);
         return -1;
     }
 
-    H2X_LOG(H2X_LOG_LEVEL_INFO, "Adding new connection %d to thread %u", connection->fd, thread->thread_id);
-
-    connection->next_new_connection = thread->new_connections;
-    thread->new_connections = connection;
-    ++thread->connection_count;
-
-    pthread_mutex_unlock(&thread->new_data_lock);
     return 0;
 }
 

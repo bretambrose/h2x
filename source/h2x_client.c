@@ -146,11 +146,7 @@ static int handle_request_command(int argc, char** argv, void* context)
 struct command_def client_commands[] = {
     { "quit", 0, false, handle_quit_command, "shuts down the client" },
     { "connect", 2, false, handle_connect_command, "[dest ip] [dest port] - attempts to connect to an h2x server process" },
-    { "request", 4, false, handle_request_command, "[dest ip] [dest port] [header_file] [body_file] - attempts to connect to an h2x server process and send a request built from the header and body files" },
-    { "list_threads", 0, false, h2x_command_handle_list_threads, "lists all connection manager threads" },
-    { "list_connections", 1, false, h2x_command_handle_list_connections, "[thread_id] - lists all connections within a thread" },
-    { "describe_thread", 1, false, h2x_command_handle_describe_thread, "[thread_id] - dumps detailed information about a thread" },
-    { "describe_connection", 1, false, h2x_command_handle_describe_connection, "[connection_id] [thread_id] - dumps details information about a connection" }
+    { "request", 4, false, handle_request_command, "[dest ip] [dest port] [header_file] [body_file] - attempts to connect to an h2x server process and send a request built from the header and body files" }
 };
 
 #define CLIENT_COMMAND_COUNT ((uint32_t)(sizeof(client_commands) / sizeof(struct command_def)))
